@@ -1,0 +1,148 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      create_release:
+        description: 'Create a GitHub release'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: ProjectLauncher-Setup.exe
+            asset_name: ProjectLauncher-Setup-Windows.exe
+          - os: macos-latest
+            artifact_name: ProjectLauncher-Installer
+            asset_name: ProjectLauncher-Installer-macOS
+          - os: ubuntu-latest
+            artifact_name: project-launcher-installer
+            asset_name: project-launcher-installer-Linux
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # macOS: Create .icns icon file
+      - name: Create macOS icon
+        if: matrix.os == 'macos-latest'
+        run: |
+          python create_icons.py
+          
+      # Windows/Linux: Create icons
+      - name: Create icons
+        if: matrix.os != 'macos-latest'
+        run: |
+          python create_icons.py
+
+      - name: Build installer
+        run: python build_installer.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/${{ matrix.artifact_name }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+    
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -la artifacts/
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          # Move and rename files for release
+          mv artifacts/ProjectLauncher-Setup-Windows.exe/ProjectLauncher-Setup.exe release/ProjectLauncher-Setup-Windows.exe || true
+          mv artifacts/ProjectLauncher-Installer-macOS/ProjectLauncher-Installer release/ProjectLauncher-Installer-macOS || true
+          mv artifacts/project-launcher-installer-Linux/project-launcher-installer release/project-launcher-installer-Linux || true
+          # Make Unix installers executable
+          chmod +x release/ProjectLauncher-Installer-macOS || true
+          chmod +x release/project-launcher-installer-Linux || true
+          ls -la release/
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "version=dev-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Project Launcher ${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          generate_release_notes: true
+          files: |
+            release/ProjectLauncher-Setup-Windows.exe
+            release/ProjectLauncher-Installer-macOS
+            release/project-launcher-installer-Linux
+          body: |
+            ## Project Launcher ${{ steps.get_version.outputs.version }}
+            
+            ### Downloads
+            
+            | Platform | File | Instructions |
+            |----------|------|--------------|
+            | **Windows** | `ProjectLauncher-Setup-Windows.exe` | Double-click to install |
+            | **macOS** | `ProjectLauncher-Installer-macOS` | Download, run `chmod +x` and execute |
+            | **Linux** | `project-launcher-installer-Linux` | Download, run `chmod +x` and execute |
+            
+            ### What's Included
+            
+            - One-click project launching
+            - Support for VS Code, Cursor, Zed, Windsurf, and JetBrains IDEs
+            - AI coding tools integration (OpenCode, Claude Code, Aider)
+            - Multi-browser support
+            - System tray icon
+            - Auto-start on login
+            
+            ### Installation
+            
+            **Windows:** Just double-click the `.exe` file and follow the prompts.
+            
+            **macOS/Linux:** 
+            ```bash
+            chmod +x ./ProjectLauncher-Installer-macOS  # or project-launcher-installer-Linux
+            ./ProjectLauncher-Installer-macOS
+            ```
