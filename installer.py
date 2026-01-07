@@ -110,6 +110,14 @@ def install_windows():
     shutil.copy2(source_exe, dest_exe)
     print(f"[OK] Copied to {dest_exe}")
     
+    # Copy icon if available
+    script_dir = Path(__file__).parent
+    icon_src = script_dir / "assets" / "icon.ico"
+    icon_dest = install_dir / "icon.ico"
+    if icon_src.exists():
+        shutil.copy2(icon_src, icon_dest)
+        print(f"[OK] Copied icon")
+    
     # Create Start Menu shortcut
     start_menu_dir = get_start_menu_dir()
     start_menu_shortcut = start_menu_dir / "Project Launcher.lnk"
@@ -119,7 +127,8 @@ def install_windows():
         str(dest_exe),
         str(start_menu_shortcut),
         description="Launch your development projects with one click",
-        working_dir=str(install_dir)
+        working_dir=str(install_dir),
+        icon_path=str(dest_exe) + ",0"  # Use icon embedded in exe
     ):
         print(f"[OK] Start Menu shortcut created")
     else:
@@ -132,7 +141,8 @@ def install_windows():
         str(dest_exe),
         str(desktop_shortcut),
         description="Launch your development projects with one click",
-        working_dir=str(install_dir)
+        working_dir=str(install_dir),
+        icon_path=str(dest_exe) + ",0"  # Use icon embedded in exe
     ):
         print(f"[OK] Desktop shortcut created")
     else:

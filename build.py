@@ -71,6 +71,12 @@ def build_windows():
     print("=" * 60)
     
     root = get_project_root()
+    icon_path = root / "assets" / "icon.ico"
+    
+    # Check if icon exists
+    if not icon_path.exists():
+        print("[*] Icon not found, generating...")
+        subprocess.check_call([sys.executable, str(root / "create_icons.py")])
     
     # PyInstaller command
     cmd = [
@@ -78,10 +84,11 @@ def build_windows():
         "--name=ProjectLauncher",
         "--onefile",
         "--windowed",
-        "--icon=NONE",  # We'll add icon later if needed
+        f"--icon={icon_path}",
         "--add-data", f"{root / 'config_manager.py'};.",
         "--add-data", f"{root / 'launchers.py'};.",
         "--add-data", f"{root / 'startup_manager.py'};.",
+        "--add-data", f"{root / 'assets'};assets",
         "--hidden-import=pystray._win32",
         "--hidden-import=PIL._tkinter_finder",
         str(root / "project_launcher.py")
@@ -109,6 +116,12 @@ def build_macos():
     print("=" * 60)
     
     root = get_project_root()
+    icon_path = root / "assets" / "icon.icns"
+    
+    # Check if icon exists, try to generate
+    if not icon_path.exists():
+        print("[*] Icon not found, generating...")
+        subprocess.check_call([sys.executable, str(root / "create_icons.py")])
     
     # PyInstaller command for macOS
     cmd = [
@@ -116,13 +129,21 @@ def build_macos():
         "--name=ProjectLauncher",
         "--onefile",
         "--windowed",
+    ]
+    
+    # Add icon if it exists
+    if icon_path.exists():
+        cmd.append(f"--icon={icon_path}")
+    
+    cmd.extend([
         "--add-data", f"{root / 'config_manager.py'}:.",
         "--add-data", f"{root / 'launchers.py'}:.",
         "--add-data", f"{root / 'startup_manager.py'}:.",
+        "--add-data", f"{root / 'assets'}:assets",
         "--hidden-import=pystray._darwin",
         "--hidden-import=PIL._tkinter_finder",
         str(root / "project_launcher.py")
-    ]
+    ])
     
     subprocess.check_call(cmd, cwd=root)
     
@@ -148,6 +169,12 @@ def build_linux():
     print("=" * 60)
     
     root = get_project_root()
+    icon_path = root / "assets" / "icon.png"
+    
+    # Check if icon exists
+    if not icon_path.exists():
+        print("[*] Icon not found, generating...")
+        subprocess.check_call([sys.executable, str(root / "create_icons.py")])
     
     # PyInstaller command for Linux
     cmd = [
@@ -158,6 +185,7 @@ def build_linux():
         "--add-data", f"{root / 'config_manager.py'}:.",
         "--add-data", f"{root / 'launchers.py'}:.",
         "--add-data", f"{root / 'startup_manager.py'}:.",
+        "--add-data", f"{root / 'assets'}:assets",
         "--hidden-import=pystray._xorg",
         "--hidden-import=PIL._tkinter_finder",
         str(root / "project_launcher.py")
