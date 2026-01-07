@@ -209,15 +209,33 @@ def install_windows():
     print("Setting up auto-start...")
     startup_vbs = create_windows_startup(dest_exe, install_dir)
     
-    # Create uninstaller
+    # Create Start Menu folder for app group
+    start_menu_folder = start_menu_dir / "Project Launcher"
+    start_menu_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Move app shortcut to folder
+    start_menu_app_shortcut = start_menu_folder / "Project Launcher.lnk"
+    if start_menu_shortcut.exists():
+        shutil.move(str(start_menu_shortcut), str(start_menu_app_shortcut))
+    
+    # Create uninstaller batch file
     uninstaller_path = install_dir / "uninstall.bat"
+    uninstall_shortcut = start_menu_folder / "Uninstall Project Launcher.lnk"
+    
+    # Registry key for Add/Remove Programs
+    reg_key = r"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ProjectLauncher"
+    
     uninstaller_content = f"""@echo off
 echo Uninstalling Project Launcher...
 taskkill /F /IM ProjectLauncher.exe 2>nul
-del "{start_menu_shortcut}" 2>nul
+del "{start_menu_app_shortcut}" 2>nul
+del "{uninstall_shortcut}" 2>nul
+rmdir "{start_menu_folder}" 2>nul
 del "{desktop_shortcut}" 2>nul
 del "{startup_vbs}" 2>nul
+reg delete "HKCU\\{reg_key}" /f 2>nul
 timeout /t 2 /nobreak >nul
+cd /d "%TEMP%"
 rmdir /s /q "{install_dir}"
 echo Project Launcher has been uninstalled.
 pause
@@ -225,13 +243,47 @@ pause
     with open(uninstaller_path, "w") as f:
         f.write(uninstaller_content)
     
+    # Create Start Menu shortcut for uninstaller
+    print("Creating uninstaller shortcut...")
+    create_windows_shortcut(
+        str(uninstaller_path),
+        str(uninstall_shortcut),
+        description="Uninstall Project Launcher",
+        working_dir=str(install_dir)
+    )
+    
+    # Register in Windows Add/Remove Programs
+    print("Registering in Add/Remove Programs...")
+    icon_path = install_dir / "icon.ico"
+    reg_script = f"""
+$regPath = "HKCU:\\{reg_key}"
+New-Item -Path $regPath -Force | Out-Null
+Set-ItemProperty -Path $regPath -Name "DisplayName" -Value "Project Launcher"
+Set-ItemProperty -Path $regPath -Name "DisplayVersion" -Value "0.0.1"
+Set-ItemProperty -Path $regPath -Name "Publisher" -Value "Project Launcher"
+Set-ItemProperty -Path $regPath -Name "InstallLocation" -Value "{install_dir}"
+Set-ItemProperty -Path $regPath -Name "UninstallString" -Value "{uninstaller_path}"
+Set-ItemProperty -Path $regPath -Name "DisplayIcon" -Value "{icon_path if icon_path.exists() else dest_exe}"
+Set-ItemProperty -Path $regPath -Name "NoModify" -Value 1 -Type DWord
+Set-ItemProperty -Path $regPath -Name "NoRepair" -Value 1 -Type DWord
+"""
+    try:
+        subprocess.run(
+            ["powershell", "-ExecutionPolicy", "Bypass", "-Command", reg_script],
+            capture_output=True,
+            check=True
+        )
+    except Exception as e:
+        print(f"Note: Could not register in Add/Remove Programs: {{e}}")
+    
     # Success message
     result = ctypes.windll.user32.MessageBoxW(
         0,
         "Project Launcher has been installed successfully!\\n\\n"
         "- Desktop shortcut created\\n"
-        "- Start Menu shortcut created\\n"
-        "- Will auto-start with Windows\\n\\n"
+        "- Start Menu shortcuts created\\n"
+        "- Will auto-start with Windows\\n"
+        "- Added to Add/Remove Programs\\n\\n"
         "Would you like to launch it now?",
         "Installation Complete",
         36  # MB_YESNO + MB_ICONQUESTION
@@ -338,19 +390,41 @@ def install_macos():
 echo "Uninstalling Project Launcher..."
 launchctl unload "{plist_path}" 2>/dev/null
 rm -f "{plist_path}"
-rm -rf "{install_dir}"
 rm -rf "$HOME/Applications/Project Launcher.app"
 rm -f "$HOME/.local/bin/project-launcher"
+rm -f /usr/local/bin/project-launcher 2>/dev/null
+rm -f "$HOME/.local/share/applications/project-launcher-uninstall.desktop"
+rm -rf "{install_dir}"
 echo "Project Launcher has been uninstalled."
 """
     with open(uninstaller_path, "w") as f:
         f.write(uninstaller_content)
     os.chmod(uninstaller_path, 0o755)
     
+    # Create .desktop file for uninstaller in Applications
+    applications_dir = Path.home() / ".local" / "share" / "applications"
+    applications_dir.mkdir(parents=True, exist_ok=True)
+    
+    uninstall_desktop = applications_dir / "project-launcher-uninstall.desktop"
+    icon_path = install_dir / "icon.png"
+    uninstall_desktop_content = f"""[Desktop Entry]
+Type=Application
+Name=Uninstall Project Launcher
+Comment=Remove Project Launcher from your system
+Exec=bash "{uninstaller_path}"
+Icon={icon_path}
+Terminal=true
+Categories=Utility;
+"""
+    with open(uninstall_desktop, "w") as f:
+        f.write(uninstall_desktop_content)
+    os.chmod(uninstall_desktop, 0o755)
+    
     print("\\nInstallation complete!")
     print("- App installed to ~/Applications or ~/.local/share/ProjectLauncher")
     print("- Will auto-start on login")
     print("- Find it in Spotlight by searching 'Project Launcher'")
+    print("- Uninstaller available in Applications menu")
     
     # Ask to launch
     response = input("\\nWould you like to launch it now? [Y/n]: ").strip().lower()
@@ -433,9 +507,11 @@ StartupNotify=true
     
     # Create uninstaller script
     uninstaller_path = install_dir / "uninstall.sh"
+    uninstall_desktop = applications_dir / "project-launcher-uninstall.desktop"
     uninstaller_content = f"""#!/bin/bash
 echo "Uninstalling Project Launcher..."
 rm -f "{desktop_file}"
+rm -f "{uninstall_desktop}"
 rm -f "{autostart_file}"
 rm -f "{bin_link}"
 rm -rf "{install_dir}"
@@ -445,11 +521,27 @@ echo "Project Launcher has been uninstalled."
         f.write(uninstaller_content)
     os.chmod(uninstaller_path, 0o755)
     
+    # Create .desktop file for uninstaller in Applications menu
+    uninstall_desktop_content = f"""[Desktop Entry]
+Type=Application
+Name=Uninstall Project Launcher
+Comment=Remove Project Launcher from your system
+Exec=bash "{uninstaller_path}"
+Icon={icon_dest}
+Terminal=true
+Categories=Utility;
+"""
+    with open(uninstall_desktop, "w") as f:
+        f.write(uninstall_desktop_content)
+    os.chmod(uninstall_desktop, 0o755)
+    print(f"Created uninstaller entry in applications menu")
+    
     print("\\nInstallation complete!")
     print("- Binary installed to ~/.local/share/ProjectLauncher")
     print("- Symlink created at ~/.local/bin/project-launcher")
     print("- Desktop entry created (find in application menu)")
     print("- Will auto-start on login")
+    print("- Uninstaller available in application menu")
     
     # Check PATH
     path = os.environ.get("PATH", "")
