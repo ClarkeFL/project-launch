@@ -34,6 +34,47 @@ Download the latest installer for your platform from the [Releases](https://gith
 - Sets up auto-start on login
 - Registers uninstaller (Windows: Add/Remove Programs)
 
+### Security Warnings
+
+Since the app is not code-signed, you may see security warnings. This is normal for open-source software distributed outside app stores.
+
+<details>
+<summary><strong>Windows - "Windows protected your PC"</strong></summary>
+
+1. Click **"More info"**
+2. Click **"Run anyway"**
+
+This warning appears because the app isn't signed with an expensive code signing certificate. The app is open-source and safe to run.
+</details>
+
+<details>
+<summary><strong>macOS - "App can't be opened because it is from an unidentified developer"</strong></summary>
+
+**Option 1: Right-click method**
+1. Right-click (or Control-click) the app
+2. Select **"Open"** from the menu
+3. Click **"Open"** in the dialog
+
+**Option 2: System Preferences**
+1. Go to **System Preferences > Security & Privacy > General**
+2. Click **"Open Anyway"** next to the blocked app message
+
+**Option 3: Terminal**
+```bash
+xattr -cr ~/Applications/Project\ Launcher.app
+```
+</details>
+
+<details>
+<summary><strong>Linux</strong></summary>
+
+Linux generally doesn't show security warnings. Just make sure the file is executable:
+```bash
+chmod +x ./project-launcher-installer-Linux
+./project-launcher-installer-Linux
+```
+</details>
+
 ## Usage
 
 ### Adding a Project
