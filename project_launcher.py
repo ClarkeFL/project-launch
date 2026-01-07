@@ -32,6 +32,7 @@ from config_manager import (
     get_current_platform_terminals, get_config_dir
 )
 from launchers import execute_project_actions
+from update_checker import check_for_updates_async, open_download_page, get_current_version
 
 
 # =============================================================================
@@ -1154,6 +1155,7 @@ class App:
         
         self.config = load_config()
         self.cards = []
+        self.update_info = None  # Store update info if available
         
         # System tray
         self.tray_icon = None
@@ -1162,6 +1164,9 @@ class App:
         self._build_ui()
         self._refresh()
         self._center()
+        
+        # Check for updates in background
+        self._check_updates()
         
         # Handle window close via protocol (for non-overrideredirect windows)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -1337,6 +1342,31 @@ class App:
         tk.Frame(footer, bg=Theme.BORDER, height=1).pack(fill=tk.X, pady=(0, 12))
         
         Button(footer, "+ add project", self._add).pack(side=tk.LEFT)
+        
+        # Version label (right side of footer)
+        self.version_label = tk.Label(
+            footer,
+            text=f"v{get_current_version()}",
+            font=Theme.font(9),
+            fg=Theme.FG_DIM,
+            bg=Theme.BG
+        )
+        self.version_label.pack(side=tk.RIGHT)
+        
+        # Update notification (hidden by default)
+        self.update_frame = tk.Frame(footer, bg=Theme.BG)
+        self.update_btn = tk.Label(
+            self.update_frame,
+            text="update available",
+            font=Theme.font(9),
+            fg=Theme.GREEN,
+            bg=Theme.BG,
+            cursor="hand2"
+        )
+        self.update_btn.pack(side=tk.RIGHT)
+        self.update_btn.bind("<Enter>", lambda e: self.update_btn.config(fg=Theme.FG_BRIGHT))
+        self.update_btn.bind("<Leave>", lambda e: self.update_btn.config(fg=Theme.GREEN))
+        self.update_btn.bind("<Button-1>", lambda e: self._open_update())
     
     def _start_drag(self, event):
         """Start window drag."""
@@ -1424,6 +1454,29 @@ class App:
             save_config(self.config)
             from startup_manager import set_startup_enabled
             set_startup_enabled(self.config["settings"]["show_on_startup"])
+    
+    def _check_updates(self):
+        """Check for updates in background."""
+        def on_update_check(result):
+            if result:
+                self.update_info = result
+                # Update UI on main thread
+                self.root.after(0, self._show_update_notification)
+        
+        check_for_updates_async(on_update_check)
+    
+    def _show_update_notification(self):
+        """Show update notification in footer."""
+        if self.update_info:
+            self.update_frame.pack(side=tk.RIGHT, padx=(0, 12))
+            self.update_btn.config(
+                text=f"update available ({self.update_info['latest_version']})"
+            )
+    
+    def _open_update(self):
+        """Open download page for update."""
+        if self.update_info:
+            open_download_page(self.update_info.get('download_url'))
     
     def run(self):
         self.root.mainloop()
