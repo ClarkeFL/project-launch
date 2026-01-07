@@ -1,5 +1,5 @@
 @echo off
-REM Project Launcher - Windows Batch Script
+REM plaunch - Project Launcher for Windows
 REM Run this to launch the Project Launcher GUI
 
 REM Get the directory where this script is located

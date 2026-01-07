@@ -5,10 +5,27 @@ Clean, minimal design for developers.
 
 import os
 import sys
+import signal
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from typing import Optional, Callable
 import platform
+
+# System tray support (optional)
+HAS_TRAY = False
+pystray = None
+Image = None
+ImageDraw = None
+try:
+    import pystray as _pystray
+    from PIL import Image as _Image, ImageDraw as _ImageDraw
+    pystray = _pystray
+    Image = _Image
+    ImageDraw = _ImageDraw
+    HAS_TRAY = True
+except ImportError:
+    pass
 
 from config_manager import (
     load_config, save_config, add_project, remove_project, update_project,
@@ -1084,6 +1101,38 @@ class SettingsDialog(BaseDialog):
 
 
 # =============================================================================
+# System Tray Icon
+# =============================================================================
+
+def create_tray_icon_image(size=64):
+    """Create a simple icon for the system tray."""
+    if not Image or not ImageDraw:
+        return None
+    
+    # Create image with transparent background
+    image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    
+    # Draw a rocket/launch icon (simple geometric design)
+    # Background circle
+    margin = size // 8
+    draw.ellipse([margin, margin, size - margin, size - margin], 
+                 fill='#0078d4')
+    
+    # Arrow/play triangle (launch symbol)
+    center = size // 2
+    tri_size = size // 4
+    points = [
+        (center - tri_size // 2, center - tri_size),
+        (center - tri_size // 2, center + tri_size),
+        (center + tri_size, center)
+    ]
+    draw.polygon(points, fill='white')
+    
+    return image
+
+
+# =============================================================================
 # Main App
 # =============================================================================
 
@@ -1106,9 +1155,81 @@ class App:
         self.config = load_config()
         self.cards = []
         
+        # System tray
+        self.tray_icon = None
+        self._setup_tray()
+        
         self._build_ui()
         self._refresh()
         self._center()
+        
+        # Handle window close via protocol (for non-overrideredirect windows)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+    
+    def _setup_tray(self):
+        """Setup system tray icon."""
+        if not HAS_TRAY:
+            return
+        
+        icon_image = create_tray_icon_image()
+        if not icon_image:
+            return
+        
+        # Create menu for tray icon
+        menu = pystray.Menu(
+            pystray.MenuItem("Show", self._tray_show, default=True),
+            pystray.MenuItem("Hide", self._tray_hide),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Quit", self._tray_quit)
+        )
+        
+        self.tray_icon = pystray.Icon(
+            "project-launcher",
+            icon_image,
+            "Project Launcher",
+            menu
+        )
+        
+        # Run tray icon in separate thread
+        tray_thread = threading.Thread(target=self.tray_icon.run, daemon=True)
+        tray_thread.start()
+    
+    def _tray_show(self, icon=None, item=None):
+        """Show window from tray."""
+        self.root.after(0, self._show_window)
+    
+    def _tray_hide(self, icon=None, item=None):
+        """Hide window to tray."""
+        self.root.after(0, self._hide_window)
+    
+    def _tray_quit(self, icon=None, item=None):
+        """Quit application from tray."""
+        self.root.after(0, self._quit_app)
+    
+    def _show_window(self):
+        """Show the main window."""
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
+        self._center()
+    
+    def _hide_window(self):
+        """Hide the main window."""
+        self.root.withdraw()
+    
+    def _on_close(self):
+        """Handle window close - hide to tray instead of quitting."""
+        if HAS_TRAY and self.tray_icon:
+            self._hide_window()
+        else:
+            self._quit_app()
+    
+    def _quit_app(self):
+        """Fully quit the application."""
+        if self.tray_icon:
+            self.tray_icon.stop()
+        self.root.quit()
+        self.root.destroy()
     
     def _build_ui(self):
         # Main container with border
@@ -1143,7 +1264,7 @@ class App:
         controls = tk.Frame(titlebar, bg=Theme.BG_SECONDARY)
         controls.pack(side=tk.RIGHT, padx=8)
         
-        # Minimize
+        # Minimize (hide to tray)
         min_btn = tk.Label(
             controls,
             text="─",
@@ -1156,9 +1277,9 @@ class App:
         min_btn.pack(side=tk.LEFT)
         min_btn.bind("<Enter>", lambda e: min_btn.config(fg=Theme.FG))
         min_btn.bind("<Leave>", lambda e: min_btn.config(fg=Theme.FG_DIM))
-        min_btn.bind("<Button-1>", lambda e: self.root.iconify())
+        min_btn.bind("<Button-1>", lambda e: self._hide_window())
         
-        # Close
+        # Close (quit app)
         close_btn = tk.Label(
             controls,
             text="×",
@@ -1171,7 +1292,7 @@ class App:
         close_btn.pack(side=tk.LEFT)
         close_btn.bind("<Enter>", lambda e: close_btn.config(fg=Theme.RED))
         close_btn.bind("<Leave>", lambda e: close_btn.config(fg=Theme.FG_DIM))
-        close_btn.bind("<Button-1>", lambda e: self.root.quit())
+        close_btn.bind("<Button-1>", lambda e: self._quit_app())
         
         # Settings in titlebar
         settings_btn = tk.Label(
@@ -1309,7 +1430,22 @@ class App:
 
 
 def main():
-    App().run()
+    app = App()
+    
+    # Handle Ctrl+C gracefully
+    def signal_handler(sig, frame):
+        app._quit_app()
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    # On Windows, we need to periodically check for signals
+    # since Tkinter blocks signal handling
+    def check_signals():
+        app.root.after(100, check_signals)
+    
+    app.root.after(100, check_signals)
+    app.run()
 
 
 if __name__ == "__main__":

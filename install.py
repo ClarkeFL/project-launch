@@ -33,22 +33,26 @@ def install_dependencies() -> bool:
     print("\n[*] Installing dependencies...")
     
     try:
-        # Check if pyyaml is already installed
-        try:
-            import yaml
-            print("[OK] PyYAML is already installed")
-            return True
-        except ImportError:
-            pass
+        requirements_file = get_install_dir() / "requirements.txt"
         
-        # Install pyyaml
-        subprocess.check_call([
-            sys.executable, "-m", "pip", "install", "pyyaml", "--quiet"
-        ])
-        print("[OK] PyYAML installed successfully")
+        if requirements_file.exists():
+            # Install from requirements.txt
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", "-r", str(requirements_file), "--quiet"
+            ])
+            print("[OK] All dependencies installed successfully")
+        else:
+            # Fallback: install packages directly
+            packages = ["pyyaml", "pystray", "Pillow"]
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", *packages, "--quiet"
+            ])
+            print("[OK] All dependencies installed successfully")
+        
         return True
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Failed to install dependencies: {e}")
+        print("Try running manually: pip install -r requirements.txt")
         return False
 
 
@@ -125,7 +129,7 @@ def setup_path_unix() -> bool:
         config_file = Path.home() / ".bashrc"
     
     # Make the shell script executable
-    shell_script = get_install_dir() / "launch-projects"
+    shell_script = get_install_dir() / "plaunch"
     if shell_script.exists():
         os.chmod(shell_script, 0o755)
     
@@ -232,24 +236,26 @@ def print_success():
 You can now use Project Launcher in the following ways:
 
   1. CLI Command (after restarting terminal):
-     $ launch-projects
+     $ plaunch
 
   2. Direct execution:""")
     
     if system == "Windows":
         print(f"     > python {get_install_dir()}\\project_launcher.py")
-        print(f"     > {get_install_dir()}\\launch-projects.bat")
+        print(f"     > {get_install_dir()}\\plaunch.bat")
     else:
         print(f"     $ python3 {get_install_dir()}/project_launcher.py")
-        print(f"     $ {get_install_dir()}/launch-projects")
+        print(f"     $ {get_install_dir()}/plaunch")
     
     print("""
   3. The app will automatically launch on system startup
      (can be disabled in Settings)
 
+  4. System tray icon - minimize to tray, click to restore
+
 Quick Start:
   - Click '+ Add Project' to add your first project
-  - Configure VS Code, terminal windows, and browser tabs
+  - Configure IDE, AI tools, terminal commands, and browser tabs
   - Click on a project to launch it!
 """)
 

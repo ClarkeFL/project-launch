@@ -50,9 +50,15 @@ def _enable_windows_startup() -> bool:
         
         script_path = get_script_path()
         python_exe = get_python_executable()
+        working_dir = script_path.parent
         
-        # Create a VBS script that launches Python without showing a console window
+        # Create a VBS script that:
+        # 1. Waits a few seconds for the desktop to fully load
+        # 2. Changes to the script directory (so relative imports work)
+        # 3. Launches Python without showing a console window
         vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
+WScript.Sleep 3000
+WshShell.CurrentDirectory = "{working_dir}"
 WshShell.Run """{python_exe}"" ""{script_path}""", 0, False
 '''
         

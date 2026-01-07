@@ -1,5 +1,5 @@
 #!/bin/bash
-# Project Launcher - Shell Script for Mac/Linux
+# plaunch - Project Launcher for Mac/Linux
 # Run this to launch the Project Launcher GUI
 
 # Get the directory where this script is located
