@@ -811,11 +811,39 @@ class ProjectDialog(BaseDialog):
         self._populate()
     
     def _create(self):
+        # Main container with padding
         main = tk.Frame(self.content, bg=Theme.BG, padx=24, pady=20)
         main.pack(fill=tk.BOTH, expand=True)
         
+        # Create scrollable area
+        scroll_container = tk.Frame(main, bg=Theme.BG)
+        scroll_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Canvas for scrolling
+        self._canvas = tk.Canvas(scroll_container, bg=Theme.BG, highlightthickness=0)
+        self._scrollbar = tk.Scrollbar(scroll_container, orient="vertical", command=self._canvas.yview)
+        self._scrollable_frame = tk.Frame(self._canvas, bg=Theme.BG)
+        
+        self._scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+        )
+        
+        self._canvas_window = self._canvas.create_window((0, 0), window=self._scrollable_frame, anchor="nw")
+        self._canvas.configure(yscrollcommand=self._scrollbar.set)
+        
+        # Bind canvas resize to update scrollable frame width
+        self._canvas.bind("<Configure>", self._on_canvas_configure)
+        
+        # Bind mousewheel for scrolling
+        self._canvas.bind("<Enter>", lambda e: self._bind_mousewheel())
+        self._canvas.bind("<Leave>", lambda e: self._unbind_mousewheel())
+        
+        self._canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
         # === Row 1: Name and Path ===
-        row1 = tk.Frame(main, bg=Theme.BG)
+        row1 = tk.Frame(self._scrollable_frame, bg=Theme.BG)
         row1.pack(fill=tk.X, pady=(0, 20))
         
         # Name (left)
@@ -838,7 +866,7 @@ class ProjectDialog(BaseDialog):
         Button(path_row, "...", self._browse).pack(side=tk.RIGHT)
         
         # === Row 2: IDE and Terminal ===
-        row2 = tk.Frame(main, bg=Theme.BG)
+        row2 = tk.Frame(self._scrollable_frame, bg=Theme.BG)
         row2.pack(fill=tk.X, pady=(0, 20))
         
         # IDE (left)
@@ -864,7 +892,7 @@ class ProjectDialog(BaseDialog):
         self.term_dropdown.pack(fill=tk.X, pady=(6, 0))
         
         # === Row 3: AI Coding Tools ===
-        row3 = tk.Frame(main, bg=Theme.BG)
+        row3 = tk.Frame(self._scrollable_frame, bg=Theme.BG)
         row3.pack(fill=tk.X, pady=(0, 20))
         
         tk.Label(row3, text="AI Coding Tools", font=Theme.font(10), fg=Theme.FG_DIM, bg=Theme.BG).pack(anchor="w")
@@ -872,7 +900,7 @@ class ProjectDialog(BaseDialog):
         self.ai_buttons.pack(fill=tk.X, pady=(6, 0))
         
         # === Row 4: Browsers ===
-        row4 = tk.Frame(main, bg=Theme.BG)
+        row4 = tk.Frame(self._scrollable_frame, bg=Theme.BG)
         row4.pack(fill=tk.X, pady=(0, 20))
         
         tk.Label(row4, text="Browsers", font=Theme.font(10), fg=Theme.FG_DIM, bg=Theme.BG).pack(anchor="w")
@@ -889,7 +917,7 @@ class ProjectDialog(BaseDialog):
         TextButton(urls_row, "edit urls", self._edit_browser, fg=Theme.ACCENT, hover_fg=Theme.FG_BRIGHT, bg=Theme.BG).pack(side=tk.RIGHT)
         
         # === Row 5: Custom Terminal Commands ===
-        row5 = tk.Frame(main, bg=Theme.BG)
+        row5 = tk.Frame(self._scrollable_frame, bg=Theme.BG)
         row5.pack(fill=tk.X, pady=(0, 20))
         
         term_header = tk.Frame(row5, bg=Theme.BG)
@@ -901,12 +929,38 @@ class ProjectDialog(BaseDialog):
         self.terminals_frame = tk.Frame(row5, bg=Theme.BG)
         self.terminals_frame.pack(fill=tk.X, pady=(6, 0))
         
-        # === Buttons ===
+        # === Buttons (outside scrollable area) ===
         btns = tk.Frame(main, bg=Theme.BG)
-        btns.pack(fill=tk.X, pady=(10, 0))
+        btns.pack(fill=tk.X, pady=(10, 0), side=tk.BOTTOM)
         
         Button(btns, "Save Project", self._save, primary=True).pack(side=tk.RIGHT, padx=(12, 0))
         Button(btns, "Cancel", self._cancel).pack(side=tk.RIGHT)
+    
+    def _on_canvas_configure(self, event):
+        """Update scrollable frame width when canvas resizes."""
+        self._canvas.itemconfig(self._canvas_window, width=event.width)
+    
+    def _bind_mousewheel(self):
+        """Bind mousewheel scrolling."""
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        # Linux support
+        self._canvas.bind_all("<Button-4>", self._on_mousewheel)
+        self._canvas.bind_all("<Button-5>", self._on_mousewheel)
+    
+    def _unbind_mousewheel(self):
+        """Unbind mousewheel scrolling."""
+        self._canvas.unbind_all("<MouseWheel>")
+        self._canvas.unbind_all("<Button-4>")
+        self._canvas.unbind_all("<Button-5>")
+    
+    def _on_mousewheel(self, event):
+        """Handle mousewheel scrolling."""
+        if event.num == 4:  # Linux scroll up
+            self._canvas.yview_scroll(-1, "units")
+        elif event.num == 5:  # Linux scroll down
+            self._canvas.yview_scroll(1, "units")
+        else:  # Windows/macOS
+            self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
     
     def _populate(self):
         if self.project.get("name"):
