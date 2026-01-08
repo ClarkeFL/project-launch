@@ -9,14 +9,13 @@ import platform
 from pathlib import Path
 from typing import Optional
 
-# Try to import yaml, handle if not installed
+# Try to import yaml, fail gracefully if not installed
 try:
     import yaml
 except ImportError:
-    print("PyYAML is not installed. Installing...")
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "pyyaml"])
-    import yaml
+    print("ERROR: PyYAML is required but not installed.")
+    print("Please install it with: pip install pyyaml")
+    sys.exit(1)
 
 
 def get_config_dir() -> Path:

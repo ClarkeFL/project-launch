@@ -11,6 +11,8 @@ import subprocess
 import platform
 from pathlib import Path
 
+from update_checker import VERSION
+
 
 def get_platform():
     """Get current platform."""
@@ -90,13 +92,6 @@ def get_start_menu_dir():
     return Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs"
 
 
-def get_startup_dir():
-    """Get the Windows Startup folder."""
-    appdata = os.environ.get("APPDATA", "")
-    if appdata:
-        return Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
-    return Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
-
 
 def create_windows_shortcut(target_path, shortcut_path, description="", icon_path=None, working_dir=None):
     """Create a Windows shortcut (.lnk file)."""
@@ -126,21 +121,119 @@ $Shortcut.Description = "{description}"
 
 
 def create_windows_startup(exe_path, install_dir):
-    """Create VBS script for Windows startup."""
-    startup_dir = get_startup_dir()
-    startup_dir.mkdir(parents=True, exist_ok=True)
+    """Create Task Scheduler entry for fast Windows startup."""
+    import tempfile
     
-    vbs_path = startup_dir / "ProjectLauncher.vbs"
-    vbs_content = f"""Set WshShell = CreateObject("WScript.Shell")
-WScript.Sleep 3000
-WshShell.CurrentDirectory = "{install_dir}"
-WshShell.Run "\\"{exe_path}\\"", 0, False
+    task_name = "ProjectLauncherStartup"
+    username = os.environ.get("USERNAME", "")
+    
+    # Task Scheduler XML for AtLogon trigger (fast startup, bypasses Windows delay)
+    task_xml = f"""<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Project Launcher - Auto-start at login</Description>
+    <Author>ProjectLauncher</Author>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>{username}</UserId>
+      <Delay>PT5S</Delay>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{username}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>4</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>"{exe_path}"</Command>
+      <WorkingDirectory>{install_dir}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
 """
     
-    with open(vbs_path, "w") as f:
-        f.write(vbs_content)
-    
-    return vbs_path
+    try:
+        # Delete existing task if it exists
+        subprocess.run(
+            ["schtasks", "/delete", "/tn", task_name, "/f"],
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0x08000000
+        )
+        
+        # Write XML to temp file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False, encoding='utf-16') as f:
+            f.write(task_xml)
+            xml_path = f.name
+        
+        # Create task from XML (installer runs with admin, so this works)
+        result = subprocess.run(
+            ["schtasks", "/create", "/tn", task_name, "/xml", xml_path],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0x08000000
+        )
+        
+        # Clean up temp file
+        try:
+            os.unlink(xml_path)
+        except:
+            pass
+        
+        if result.returncode == 0:
+            print(f"Created Task Scheduler startup entry: {task_name}")
+            return task_name
+        else:
+            print(f"Task Scheduler failed: {result.stderr}")
+            # Fall back to registry method
+            return create_windows_startup_registry(exe_path)
+            
+    except Exception as e:
+        print(f"Task Scheduler error: {e}, falling back to registry")
+        return create_windows_startup_registry(exe_path)
+
+
+def create_windows_startup_registry(exe_path):
+    """Fallback: Create registry entry for Windows startup (slower, 2-3 min delay)."""
+    try:
+        reg_script = f"""
+$regPath = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+Set-ItemProperty -Path $regPath -Name "ProjectLauncher" -Value '"{exe_path}"'
+"""
+        subprocess.run(
+            ["powershell", "-ExecutionPolicy", "Bypass", "-Command", reg_script],
+            capture_output=True,
+            check=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0x08000000
+        )
+        print("Created registry startup entry (fallback)")
+        return "registry"
+    except Exception as e:
+        print(f"Registry fallback also failed: {e}")
+        return None
 
 
 def show_windows_message(title, message, style=0):
@@ -205,9 +298,9 @@ def install_windows():
         icon_path=str(dest_exe) + ",0"
     )
     
-    # Create startup entry
+    # Create startup entry (Task Scheduler for fast startup)
     print("Setting up auto-start...")
-    startup_vbs = create_windows_startup(dest_exe, install_dir)
+    startup_result = create_windows_startup(dest_exe, install_dir)
     
     # Create Start Menu folder for app group
     start_menu_folder = start_menu_dir / "Project Launcher"
@@ -225,6 +318,9 @@ def install_windows():
     # Registry key for Add/Remove Programs
     reg_key = r"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ProjectLauncher"
     
+    # Startup registry key (for fallback cleanup)
+    startup_reg_key = r"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+    
     uninstaller_content = f"""@echo off
 echo Uninstalling Project Launcher...
 taskkill /F /IM ProjectLauncher.exe 2>nul
@@ -232,7 +328,11 @@ del "{start_menu_app_shortcut}" 2>nul
 del "{uninstall_shortcut}" 2>nul
 rmdir "{start_menu_folder}" 2>nul
 del "{desktop_shortcut}" 2>nul
-del "{startup_vbs}" 2>nul
+REM Remove Task Scheduler startup entry
+schtasks /delete /tn "ProjectLauncherStartup" /f 2>nul
+REM Remove registry startup entry (fallback)
+reg delete "HKCU\\{startup_reg_key}" /v "ProjectLauncher" /f 2>nul
+REM Remove Add/Remove Programs entry
 reg delete "HKCU\\{reg_key}" /f 2>nul
 timeout /t 2 /nobreak >nul
 cd /d "%TEMP%"
@@ -618,12 +718,13 @@ def build_installer_windows(root, temp_dir):
     if icon_path.exists():
         shutil.copy2(icon_path, temp_dir / "icon.ico")
     
-    # Build installer
+    # Build installer with version in name
+    installer_name = f"ProjectLauncher-Setup-{VERSION}"
     installer_script = temp_dir / "installer_main.py"
     
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--name=ProjectLauncher-Setup",
+        f"--name={installer_name}",
         "--onefile",
         "--windowed",
         f"--icon={icon_path}" if icon_path.exists() else "",
@@ -636,11 +737,11 @@ def build_installer_windows(root, temp_dir):
     
     subprocess.check_call(cmd, cwd=root)
     
-    return root / "dist" / "ProjectLauncher-Setup.exe"
+    return root / "dist" / f"{installer_name}.exe"
 
 
 def build_installer_macos(root, temp_dir):
-    """Build macOS installer."""
+    """Build macOS installer as .dmg disk image."""
     print("[*] Building macOS installer...")
     
     # Look for app or binary
@@ -671,12 +772,13 @@ def build_installer_macos(root, temp_dir):
     
     icns_path = root / "assets" / "icon.icns"
     
-    # Build installer
+    # Build installer with version in name
+    installer_name = f"ProjectLauncher-Installer-{VERSION}"
     installer_script = temp_dir / "installer_main.py"
     
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--name=ProjectLauncher-Installer",
+        f"--name={installer_name}",
         "--onefile",
     ]
     
@@ -692,7 +794,80 @@ def build_installer_macos(root, temp_dir):
     
     subprocess.check_call(cmd, cwd=root)
     
-    return root / "dist" / "ProjectLauncher-Installer"
+    installer_binary = root / "dist" / installer_name
+    
+    # Create .dmg disk image for proper macOS distribution
+    dmg_name = f"{installer_name}.dmg"
+    dmg_path = root / "dist" / dmg_name
+    
+    print("[*] Creating .dmg disk image...")
+    try:
+        # Create a temporary directory for DMG contents
+        dmg_temp = temp_dir / "dmg_contents"
+        dmg_temp.mkdir(exist_ok=True)
+        
+        # Copy installer to DMG contents
+        shutil.copy2(installer_binary, dmg_temp / installer_name)
+        
+        # Make it executable
+        os.chmod(dmg_temp / installer_name, 0o755)
+        
+        # Create README for the DMG
+        readme_content = """# Project Launcher Installer
+
+## Installation Instructions
+
+1. Double-click the "ProjectLauncher-Installer" file
+2. If macOS blocks it, right-click and select "Open"
+3. Follow the on-screen prompts
+
+The installer will:
+- Install Project Launcher to ~/Applications
+- Set up auto-start at login
+- Create an uninstaller
+
+## Troubleshooting
+
+If you see "App is damaged" or cannot open:
+1. Open Terminal
+2. Run: xattr -cr /path/to/ProjectLauncher-Installer
+3. Try opening again
+"""
+        with open(dmg_temp / "README.txt", "w") as f:
+            f.write(readme_content)
+        
+        # Remove existing DMG if present
+        if dmg_path.exists():
+            dmg_path.unlink()
+        
+        # Create DMG using hdiutil
+        subprocess.check_call([
+            "hdiutil", "create",
+            "-volname", "Project Launcher Installer",
+            "-srcfolder", str(dmg_temp),
+            "-ov",
+            "-format", "UDZO",  # Compressed DMG
+            str(dmg_path)
+        ])
+        
+        print(f"[*] Created DMG: {dmg_path}")
+        return dmg_path
+        
+    except Exception as e:
+        print(f"[!] Warning: Could not create .dmg ({e}), falling back to binary")
+        # If DMG creation fails, zip the binary instead
+        zip_name = f"{installer_name}.zip"
+        zip_path = root / "dist" / zip_name
+        
+        try:
+            import zipfile
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                zf.write(installer_binary, installer_name)
+            print(f"[*] Created ZIP fallback: {zip_path}")
+            return zip_path
+        except Exception as e2:
+            print(f"[!] ZIP also failed ({e2}), returning raw binary")
+            return installer_binary
 
 
 def build_installer_linux(root, temp_dir):
@@ -712,12 +887,13 @@ def build_installer_linux(root, temp_dir):
     if icon_path.exists():
         shutil.copy2(icon_path, temp_dir / "icon.png")
     
-    # Build installer
+    # Build installer with version in name
+    installer_name = f"project-launcher-installer-{VERSION}"
     installer_script = temp_dir / "installer_main.py"
     
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--name=project-launcher-installer",
+        f"--name={installer_name}",
         "--onefile",
         "--add-data", f"{temp_dir / 'project-launcher'}:.",
         "--add-data", f"{temp_dir / 'icon.png'}:." if (temp_dir / "icon.png").exists() else "",
@@ -727,7 +903,7 @@ def build_installer_linux(root, temp_dir):
     
     subprocess.check_call(cmd, cwd=root)
     
-    return root / "dist" / "project-launcher-installer"
+    return root / "dist" / installer_name
 
 
 def main():
@@ -754,13 +930,13 @@ def main():
     try:
         if plat == "windows":
             result = build_installer_windows(root, temp_dir)
-            installer_name = "ProjectLauncher-Setup.exe"
+            installer_name = f"ProjectLauncher-Setup-{VERSION}.exe"
         elif plat == "macos":
             result = build_installer_macos(root, temp_dir)
-            installer_name = "ProjectLauncher-Installer"
+            installer_name = f"ProjectLauncher-Installer-{VERSION}"
         else:
             result = build_installer_linux(root, temp_dir)
-            installer_name = "project-launcher-installer"
+            installer_name = f"project-launcher-installer-{VERSION}"
         
         # Clean up
         shutil.rmtree(temp_dir)

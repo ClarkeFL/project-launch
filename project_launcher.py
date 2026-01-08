@@ -3,36 +3,58 @@ Project Launcher - Main Application
 Clean, minimal design for developers.
 """
 
-import os
+# === STARTUP TIMING: Import logger first (lightweight, stdlib only) ===
 import sys
+_is_auto_startup = "--auto" in sys.argv
+from startup_logger import start_session, log, end_session
+start_session(auto=_is_auto_startup)
+
+import os
 import signal
 import threading
 import tkinter as tk
+log("tkinter imported")
 from tkinter import ttk, messagebox, filedialog
 from typing import Optional, Callable
 import platform
+log("stdlib imports complete")
 
-# System tray support (optional)
-HAS_TRAY = False
+# System tray support - lazy loaded in _setup_tray() for faster startup
+HAS_TRAY = None  # None = not checked yet, True/False = checked
 pystray = None
 Image = None
 ImageDraw = None
-try:
-    import pystray as _pystray
-    from PIL import Image as _Image, ImageDraw as _ImageDraw
-    pystray = _pystray
-    Image = _Image
-    ImageDraw = _ImageDraw
-    HAS_TRAY = True
-except ImportError:
-    pass
+
+def _lazy_load_tray_modules():
+    """Lazy load pystray and PIL modules. Returns True if available."""
+    global HAS_TRAY, pystray, Image, ImageDraw
+    
+    if HAS_TRAY is not None:
+        return HAS_TRAY
+    
+    try:
+        import pystray as _pystray
+        from PIL import Image as _Image, ImageDraw as _ImageDraw
+        pystray = _pystray
+        Image = _Image
+        ImageDraw = _ImageDraw
+        HAS_TRAY = True
+        log("pystray/PIL loaded (lazy)")
+    except ImportError:
+        HAS_TRAY = False
+        log("pystray/PIL not available")
+    
+    return HAS_TRAY
 
 from config_manager import (
     load_config, save_config, add_project, remove_project, update_project,
     get_current_platform_terminals, get_config_dir
 )
+log("config_manager imported")
 from launchers import execute_project_actions
+log("launchers imported")
 from update_checker import check_for_updates_async, open_download_page, get_current_version
+log("update_checker imported")
 
 
 # =============================================================================
@@ -1195,6 +1217,7 @@ class App:
     """Main application."""
     
     def __init__(self):
+        log("App.__init__ started")
         self.root = tk.Tk()
         self.root.title("project-launcher")
         self.root.geometry("560x480")
@@ -1208,16 +1231,23 @@ class App:
         self._drag_data = {"x": 0, "y": 0}
         
         self.config = load_config()
+        log(f"Config loaded ({len(self.config.get('projects', []))} projects)")
         self.cards = []
         self.update_info = None  # Store update info if available
         
         # System tray
         self.tray_icon = None
         self._setup_tray()
+        log("Tray setup complete")
         
         self._build_ui()
+        log("UI built")
         self._refresh()
         self._center()
+        log("Window centered and ready")
+        
+        # Mark startup complete
+        end_session()
         
         # Check for updates in background
         self._check_updates()
@@ -1227,7 +1257,8 @@ class App:
     
     def _setup_tray(self):
         """Setup system tray icon."""
-        if not HAS_TRAY:
+        # Lazy load tray modules for faster startup
+        if not _lazy_load_tray_modules():
             return
         
         icon_image = create_tray_icon_image()

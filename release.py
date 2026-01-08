@@ -4,8 +4,9 @@ Project Launcher - Release Script
 Automates version bump, commit, and tag creation.
 
 Usage:
-    python release.py 0.0.3
-    python release.py 0.0.3 --dry-run
+    python release.py           # Interactive mode (prompts for version)
+    python release.py 0.0.3     # Direct version
+    python release.py --dry-run # Interactive + dry run
 """
 
 import sys
@@ -22,6 +23,26 @@ def get_current_version():
     if match:
         return match.group(1)
     return None
+
+
+def suggest_next_version(current: str | None) -> dict:
+    """Suggest next patch, minor, and major versions."""
+    if not current:
+        return {"patch": "0.0.1", "minor": "0.1.0", "major": "1.0.0"}
+    
+    parts = current.split('.')
+    if len(parts) != 3:
+        return {"patch": "0.0.1", "minor": "0.1.0", "major": "1.0.0"}
+    
+    try:
+        major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+        return {
+            "patch": f"{major}.{minor}.{patch + 1}",
+            "minor": f"{major}.{minor + 1}.0",
+            "major": f"{major + 1}.0.0"
+        }
+    except ValueError:
+        return {"patch": "0.0.1", "minor": "0.1.0", "major": "1.0.0"}
 
 
 def update_version(new_version: str) -> bool:
@@ -62,28 +83,57 @@ def run_command(cmd: str, dry_run: bool = False) -> bool:
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python release.py <version> [--dry-run]")
-        print("Example: python release.py 0.0.3")
-        print("         python release.py 0.0.3 --dry-run")
-        sys.exit(1)
-    
-    new_version = sys.argv[1].lstrip('v')  # Remove 'v' prefix if provided
     dry_run = '--dry-run' in sys.argv
     
-    # Validate version format
-    if not re.match(r'^\d+\.\d+\.\d+$', new_version):
-        print(f"[ERROR] Invalid version format: {new_version}")
-        print("Expected format: X.Y.Z (e.g., 0.0.3)")
-        sys.exit(1)
-    
+    # Get current version
     current_version = get_current_version()
+    suggestions = suggest_next_version(current_version)
     
+    print()
     print("=" * 50)
     print("  PROJECT LAUNCHER - RELEASE")
     print("=" * 50)
     print()
-    print(f"  Current version: {current_version}")
+    print(f"  Current version: {current_version or 'unknown'}")
+    print()
+    print("  Suggested versions:")
+    print(f"    patch: {suggestions['patch']}")
+    print(f"    minor: {suggestions['minor']}")
+    print(f"    major: {suggestions['major']}")
+    print()
+    
+    # Check if version was provided as argument
+    new_version = None
+    for arg in sys.argv[1:]:
+        if not arg.startswith('--'):
+            new_version = arg.lstrip('v')
+            break
+    
+    # If no version provided, prompt for it
+    if not new_version:
+        try:
+            user_input = input("  Enter new version (or patch/minor/major): ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print("\n  Cancelled.")
+            sys.exit(0)
+        
+        if not user_input:
+            print("  No version entered. Exiting.")
+            sys.exit(0)
+        
+        # Handle shortcuts
+        if user_input in suggestions:
+            new_version = suggestions[user_input]
+        else:
+            new_version = user_input.lstrip('v')
+    
+    # Validate version format
+    if not re.match(r'^\d+\.\d+\.\d+$', new_version):
+        print(f"\n[ERROR] Invalid version format: {new_version}")
+        print("Expected format: X.Y.Z (e.g., 0.0.3)")
+        sys.exit(1)
+    
+    print()
     print(f"  New version:     {new_version}")
     if dry_run:
         print("  Mode:            DRY RUN")
@@ -92,6 +142,19 @@ def main():
     if current_version == new_version:
         print("[ERROR] New version is same as current version")
         sys.exit(1)
+    
+    # Confirm
+    try:
+        confirm = input(f"  Release v{new_version}? [y/N]: ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        print("\n  Cancelled.")
+        sys.exit(0)
+    
+    if confirm not in ('y', 'yes'):
+        print("  Cancelled.")
+        sys.exit(0)
+    
+    print()
     
     # Step 1: Update version in update_checker.py
     print("[1/4] Updating version in update_checker.py...")
@@ -130,9 +193,9 @@ def main():
     print(f"  Version v{new_version} has been released.")
     print()
     print("  GitHub Actions will now build installers for:")
-    print("    - Windows (ProjectLauncher-Setup-Windows.exe)")
-    print("    - macOS (ProjectLauncher-Installer-macOS)")
-    print("    - Linux (project-launcher-installer-Linux)")
+    print(f"    - Windows (ProjectLauncher-Setup-{new_version}.exe)")
+    print(f"    - macOS (ProjectLauncher-Installer-{new_version}.dmg)")
+    print(f"    - Linux (project-launcher-installer-{new_version})")
     print()
     print(f"  Watch progress: https://github.com/ClarkeFL/project-launch/actions")
     print(f"  Release page:   https://github.com/ClarkeFL/project-launch/releases/tag/v{new_version}")
