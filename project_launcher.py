@@ -1328,21 +1328,44 @@ class SettingsDialog(BaseDialog):
 # =============================================================================
 
 def create_tray_icon_image(size=64):
-    """Create a simple icon for the system tray."""
-    if not Image or not ImageDraw:
+    """Create icon for the system tray from source image or assets."""
+    if not Image:
         return None
     
-    # Create image with transparent background
+    # Try to load from source_icon.png or assets/icon.png
+    from pathlib import Path
+    script_dir = Path(__file__).parent
+    
+    # Priority: source_icon.png > assets/icon.png
+    icon_paths = [
+        script_dir / "source_icon.png",
+        script_dir / "assets" / "icon.png",
+    ]
+    
+    for icon_path in icon_paths:
+        if icon_path.exists():
+            try:
+                image = Image.open(icon_path)
+                if image.mode != 'RGBA':
+                    image = image.convert('RGBA')
+                if image.size != (size, size):
+                    image = image.resize((size, size), Image.Resampling.LANCZOS)
+                return image
+            except Exception:
+                continue
+    
+    # Fallback: create a simple icon programmatically
+    if not ImageDraw:
+        return None
+    
     image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     
-    # Draw a rocket/launch icon (simple geometric design)
-    # Background circle
+    # Simple circle with play symbol
     margin = size // 8
     draw.ellipse([margin, margin, size - margin, size - margin], 
                  fill='#0078d4')
     
-    # Arrow/play triangle (launch symbol)
     center = size // 2
     tri_size = size // 4
     points = [

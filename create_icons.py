@@ -4,35 +4,32 @@ Generate application icons for Project Launcher.
 Creates .ico (Windows) and .icns (macOS) files.
 """
 
-from PIL import Image, ImageDraw
+from PIL import Image
 from pathlib import Path
-import struct
 import os
+
+# Path to the source icon image
+SOURCE_ICON = Path(__file__).parent / "source_icon.png"
 
 
 def create_icon_image(size=256):
-    """Create the Project Launcher icon image."""
-    # Create image with transparent background
-    image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
+    """Load and resize the Project Launcher icon image."""
+    if not SOURCE_ICON.exists():
+        raise FileNotFoundError(
+            f"Source icon not found at {SOURCE_ICON}\n"
+            "Please place your icon image as 'source_icon.png' in the project root."
+        )
     
-    # Draw a rocket/launch icon (simple geometric design)
-    # Background circle - blue
-    margin = size // 8
-    draw.ellipse([margin, margin, size - margin, size - margin], 
-                 fill='#0078d4')
+    # Load the source image
+    image = Image.open(SOURCE_ICON)
     
-    # Arrow/play triangle (launch symbol) - white
-    center = size // 2
-    tri_size = size // 4
-    # Offset slightly to the right for visual balance
-    offset = size // 16
-    points = [
-        (center - tri_size // 2 + offset, center - tri_size),
-        (center - tri_size // 2 + offset, center + tri_size),
-        (center + tri_size + offset, center)
-    ]
-    draw.polygon(points, fill='white')
+    # Convert to RGBA if needed
+    if image.mode != 'RGBA':
+        image = image.convert('RGBA')
+    
+    # Resize with high-quality resampling
+    if image.size != (size, size):
+        image = image.resize((size, size), Image.Resampling.LANCZOS)
     
     return image
 
