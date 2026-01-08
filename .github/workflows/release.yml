@@ -18,13 +18,13 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: ProjectLauncher-Setup.exe
-            asset_name: ProjectLauncher-Setup-Windows.exe
+            artifact_name: ProjectLauncher-Setup-*.exe
+            asset_name: ProjectLauncher-Setup-Windows
           - os: macos-latest
-            artifact_name: ProjectLauncher-Installer
+            artifact_name: ProjectLauncher-Installer-*.dmg
             asset_name: ProjectLauncher-Installer-macOS
           - os: ubuntu-latest
-            artifact_name: project-launcher-installer
+            artifact_name: project-launcher-installer-*
             asset_name: project-launcher-installer-Linux
 
     runs-on: ${{ matrix.os }}
@@ -82,17 +82,16 @@ jobs:
           path: artifacts
 
       - name: Display structure of downloaded files
-        run: ls -la artifacts/
+        run: ls -laR artifacts/
 
       - name: Prepare release files
         run: |
           mkdir -p release
-          # Move and rename files for release
-          mv artifacts/ProjectLauncher-Setup-Windows.exe/ProjectLauncher-Setup.exe release/ProjectLauncher-Setup-Windows.exe || true
-          mv artifacts/ProjectLauncher-Installer-macOS/ProjectLauncher-Installer release/ProjectLauncher-Installer-macOS || true
-          mv artifacts/project-launcher-installer-Linux/project-launcher-installer release/project-launcher-installer-Linux || true
-          # Make Unix installers executable
-          chmod +x release/ProjectLauncher-Installer-macOS || true
+          # Move and rename files for release (handle versioned filenames)
+          find artifacts/ProjectLauncher-Setup-Windows -name "*.exe" -exec mv {} release/ProjectLauncher-Setup-Windows.exe \; 2>/dev/null || true
+          find artifacts/ProjectLauncher-Installer-macOS -name "*.dmg" -exec mv {} release/ProjectLauncher-Installer-macOS.dmg \; 2>/dev/null || true
+          find artifacts/project-launcher-installer-Linux -type f -exec mv {} release/project-launcher-installer-Linux \; 2>/dev/null || true
+          # Make Linux installer executable
           chmod +x release/project-launcher-installer-Linux || true
           ls -la release/
 
@@ -115,7 +114,7 @@ jobs:
           generate_release_notes: true
           files: |
             release/ProjectLauncher-Setup-Windows.exe
-            release/ProjectLauncher-Installer-macOS
+            release/ProjectLauncher-Installer-macOS.dmg
             release/project-launcher-installer-Linux
           body: |
             ## Project Launcher ${{ steps.get_version.outputs.version }}
@@ -125,7 +124,7 @@ jobs:
             | Platform | File | Instructions |
             |----------|------|--------------|
             | **Windows** | `ProjectLauncher-Setup-Windows.exe` | Double-click to install |
-            | **macOS** | `ProjectLauncher-Installer-macOS` | Download, run `chmod +x` and execute |
+            | **macOS** | `ProjectLauncher-Installer-macOS.dmg` | Open DMG, run the installer inside |
             | **Linux** | `project-launcher-installer-Linux` | Download, run `chmod +x` and execute |
             
             ### What's Included
@@ -135,14 +134,19 @@ jobs:
             - AI coding tools integration (OpenCode, Claude Code, Aider)
             - Multi-browser support
             - System tray icon
-            - Auto-start on login
+            - Auto-start on login (fast startup on Windows via Task Scheduler)
             
             ### Installation
             
             **Windows:** Just double-click the `.exe` file and follow the prompts.
             
-            **macOS/Linux:** 
+            **macOS:** 
+            1. Open the `.dmg` file
+            2. Run the installer inside
+            3. If blocked by Gatekeeper, right-click and select "Open"
+            
+            **Linux:** 
             ```bash
-            chmod +x ./ProjectLauncher-Installer-macOS  # or project-launcher-installer-Linux
-            ./ProjectLauncher-Installer-macOS
+            chmod +x ./project-launcher-installer-Linux
+            ./project-launcher-installer-Linux
             ```
