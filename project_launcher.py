@@ -79,7 +79,7 @@ def load_logo_image(size=24):
 
 from config_manager import (
     load_config, save_config, add_project, remove_project, update_project,
-    get_current_platform_terminals, get_config_dir
+    get_current_platform_terminals, get_config_dir, is_first_run, set_first_run_complete
 )
 log("config_manager imported")
 from launchers import execute_project_actions
@@ -1335,9 +1335,13 @@ class SettingsDialog(BaseDialog):
         # Startup
         row1 = tk.Frame(main, bg=Theme.BG)
         row1.pack(fill=tk.X, pady=4)
-        self.startup_var = tk.BooleanVar(value=self.config.get("settings", {}).get("show_on_startup", True))
+        self.startup_var = tk.BooleanVar(value=self.config.get("settings", {}).get("show_on_startup", False))
         tk.Checkbutton(row1, variable=self.startup_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
         tk.Label(row1, text="launch on startup", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
+        
+        # Tip about fast startup
+        tk.Label(main, text="Tip: Run setup_startup.bat as Admin for faster startup", 
+                 font=Theme.font(8), fg=Theme.FG_DIM, bg=Theme.BG).pack(anchor="w", pady=(4, 0))
         
         # Config path
         tk.Label(main, text=f"config: {get_config_dir()}", font=Theme.font(8), fg=Theme.FG_DIM, bg=Theme.BG).pack(anchor="w", pady=(16, 0))
@@ -1351,6 +1355,73 @@ class SettingsDialog(BaseDialog):
     def _save(self):
         self.config["settings"]["show_on_startup"] = self.startup_var.get()
         self.result = self.config
+        self.destroy()
+
+
+class WelcomeDialog(BaseDialog):
+    """Welcome dialog shown on first run."""
+    
+    def __init__(self, parent):
+        super().__init__(parent, "Welcome", width=440, height=300)
+        self._create()
+        self._center()
+    
+    def _create(self):
+        main = tk.Frame(self.content, bg=Theme.BG, padx=24, pady=20)
+        main.pack(fill=tk.BOTH, expand=True)
+        
+        # Welcome title
+        tk.Label(
+            main, 
+            text="Welcome to Project Launcher!", 
+            font=Theme.font(14, bold=True), 
+            fg=Theme.FG_BRIGHT, 
+            bg=Theme.BG
+        ).pack(pady=(0, 12))
+        
+        # Description
+        tk.Label(
+            main, 
+            text="Organize and launch your dev projects\nwith a single click.",
+            font=Theme.font(10), 
+            fg=Theme.FG, 
+            bg=Theme.BG, 
+            justify="center"
+        ).pack(pady=(0, 24))
+        
+        # Auto-start checkbox (default checked as most users want this)
+        self.startup_var = tk.BooleanVar(value=True)
+        startup_row = tk.Frame(main, bg=Theme.BG)
+        startup_row.pack(fill=tk.X, pady=(0, 8))
+        tk.Checkbutton(
+            startup_row, 
+            variable=self.startup_var, 
+            bg=Theme.BG, 
+            activebackground=Theme.BG, 
+            selectcolor=Theme.BG_INPUT
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            startup_row, 
+            text="Start automatically when Windows starts",
+            font=Theme.font(10), 
+            fg=Theme.FG, 
+            bg=Theme.BG
+        ).pack(side=tk.LEFT)
+        
+        # Tip about fast startup
+        tk.Label(
+            main, 
+            text="Tip: For faster startup, run setup_startup.bat as Admin",
+            font=Theme.font(8), 
+            fg=Theme.FG_DIM, 
+            bg=Theme.BG
+        ).pack(pady=(4, 24))
+        
+        # Get Started button
+        Button(main, "Get Started", self._save, primary=True).pack()
+    
+    def _save(self):
+        self.result = {"enable_startup": self.startup_var.get()}
         self.destroy()
 
 
@@ -1449,6 +1520,10 @@ class App:
         # Mark startup complete
         end_session()
         
+        # Check for first run and show welcome dialog
+        if is_first_run():
+            self.root.after(100, self._show_welcome)
+        
         # Check for updates in background
         self._check_updates()
         
@@ -1520,6 +1595,22 @@ class App:
             self.tray_icon.stop()
         self.root.quit()
         self.root.destroy()
+    
+    def _show_welcome(self):
+        """Show welcome dialog on first run."""
+        dlg = WelcomeDialog(self.root)
+        self.root.wait_window(dlg)
+        
+        # Mark first run complete
+        set_first_run_complete()
+        
+        # Handle auto-start preference
+        if dlg.result and dlg.result.get("enable_startup"):
+            from startup_manager import set_startup_enabled
+            set_startup_enabled(True)
+            # Update config to reflect this
+            self.config["settings"]["show_on_startup"] = True
+            save_config(self.config)
     
     def _build_ui(self):
         # Main container with border

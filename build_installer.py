@@ -120,122 +120,6 @@ $Shortcut.Description = "{description}"
         return False
 
 
-def create_windows_startup(exe_path, install_dir):
-    """Create Task Scheduler entry for fast Windows startup."""
-    import tempfile
-    
-    task_name = "ProjectLauncherStartup"
-    username = os.environ.get("USERNAME", "")
-    
-    # Task Scheduler XML for AtLogon trigger (fast startup, bypasses Windows delay)
-    task_xml = f"""<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>Project Launcher - Auto-start at login</Description>
-    <Author>ProjectLauncher</Author>
-  </RegistrationInfo>
-  <Triggers>
-    <LogonTrigger>
-      <Enabled>true</Enabled>
-      <UserId>{username}</UserId>
-      <Delay>PT5S</Delay>
-    </LogonTrigger>
-  </Triggers>
-  <Principals>
-    <Principal id="Author">
-      <UserId>{username}</UserId>
-      <LogonType>InteractiveToken</LogonType>
-      <RunLevel>LeastPrivilege</RunLevel>
-    </Principal>
-  </Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <AllowHardTerminate>true</AllowHardTerminate>
-    <StartWhenAvailable>false</StartWhenAvailable>
-    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
-    <IdleSettings>
-      <StopOnIdleEnd>false</StopOnIdleEnd>
-      <RestartOnIdle>false</RestartOnIdle>
-    </IdleSettings>
-    <AllowStartOnDemand>true</AllowStartOnDemand>
-    <Enabled>true</Enabled>
-    <Hidden>false</Hidden>
-    <RunOnlyIfIdle>false</RunOnlyIfIdle>
-    <WakeToRun>false</WakeToRun>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <Priority>4</Priority>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>"{exe_path}"</Command>
-      <WorkingDirectory>{install_dir}</WorkingDirectory>
-    </Exec>
-  </Actions>
-</Task>
-"""
-    
-    try:
-        # Delete existing task if it exists
-        subprocess.run(
-            ["schtasks", "/delete", "/tn", task_name, "/f"],
-            capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0x08000000
-        )
-        
-        # Write XML to temp file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False, encoding='utf-16') as f:
-            f.write(task_xml)
-            xml_path = f.name
-        
-        # Create task from XML (installer runs with admin, so this works)
-        result = subprocess.run(
-            ["schtasks", "/create", "/tn", task_name, "/xml", xml_path],
-            capture_output=True,
-            text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0x08000000
-        )
-        
-        # Clean up temp file
-        try:
-            os.unlink(xml_path)
-        except:
-            pass
-        
-        if result.returncode == 0:
-            print(f"Created Task Scheduler startup entry: {task_name}")
-            return task_name
-        else:
-            print(f"Task Scheduler failed: {result.stderr}")
-            # Fall back to registry method
-            return create_windows_startup_registry(exe_path)
-            
-    except Exception as e:
-        print(f"Task Scheduler error: {e}, falling back to registry")
-        return create_windows_startup_registry(exe_path)
-
-
-def create_windows_startup_registry(exe_path):
-    """Fallback: Create registry entry for Windows startup (slower, 2-3 min delay)."""
-    try:
-        reg_script = f"""
-$regPath = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
-Set-ItemProperty -Path $regPath -Name "ProjectLauncher" -Value '"{exe_path}"'
-"""
-        subprocess.run(
-            ["powershell", "-ExecutionPolicy", "Bypass", "-Command", reg_script],
-            capture_output=True,
-            check=True,
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0x08000000
-        )
-        print("Created registry startup entry (fallback)")
-        return "registry"
-    except Exception as e:
-        print(f"Registry fallback also failed: {e}")
-        return None
-
-
 def show_windows_message(title, message, style=0):
     """Show a Windows message box."""
     import ctypes
@@ -297,10 +181,6 @@ def install_windows():
         working_dir=str(install_dir),
         icon_path=str(dest_exe) + ",0"
     )
-    
-    # Create startup entry (Task Scheduler for fast startup)
-    print("Setting up auto-start...")
-    startup_result = create_windows_startup(dest_exe, install_dir)
     
     # Create Start Menu folder for app group
     start_menu_folder = start_menu_dir / "Project Launcher"
@@ -382,7 +262,7 @@ Set-ItemProperty -Path $regPath -Name "NoRepair" -Value 1 -Type DWord
         "Project Launcher has been installed successfully!\\n\\n"
         "- Desktop shortcut created\\n"
         "- Start Menu shortcuts created\\n"
-        "- Will auto-start with Windows\\n"
+        "- Enable auto-start from Settings after launch\\n"
         "- Added to Add/Remove Programs\\n\\n"
         "Would you like to launch it now?",
         "Installation Complete",

@@ -49,8 +49,9 @@ def get_default_config() -> dict:
     """Return the default configuration structure."""
     return {
         "settings": {
-            "show_on_startup": True,
+            "show_on_startup": False,  # Default to False, user opts-in via welcome dialog
             "terminal": get_default_terminal(),
+            "first_run_complete": False,
         },
         "projects": []
     }
@@ -162,6 +163,19 @@ def get_current_platform_terminals() -> list:
     system = platform.system()
     options = get_terminal_options()
     return options.get(system, options["Linux"])
+
+
+def is_first_run() -> bool:
+    """Check if this is the first time the app is running."""
+    config = load_config()
+    return not config.get("settings", {}).get("first_run_complete", False)
+
+
+def set_first_run_complete() -> None:
+    """Mark first run as complete."""
+    config = load_config()
+    config.setdefault("settings", {})["first_run_complete"] = True
+    save_config(config)
 
 
 # Example project structure for reference
