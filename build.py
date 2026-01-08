@@ -146,7 +146,11 @@ def build_macos():
         "--hidden-import=pystray._darwin",
         "--hidden-import=PIL._tkinter_finder",
         "--hidden-import=_struct",
-        "--collect-submodules=pystray",
+        "--collect-all=pystray",
+        "--collect-all=objc",
+        "--collect-all=Foundation",
+        "--collect-all=AppKit",
+        "--collect-all=Quartz",
         str(root / "project_launcher.py")
     ])
     
