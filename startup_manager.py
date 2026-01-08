@@ -20,10 +20,35 @@ def get_executable_path() -> Path:
     """Get the path to the running executable or script."""
     if getattr(sys, 'frozen', False):
         # Running as compiled executable
-        return Path(sys.executable)
+        exe_path = Path(sys.executable)
+        
+        # On macOS, if running from a .app bundle, return the .app path
+        # sys.executable is like: /path/to/App.app/Contents/MacOS/App
+        if get_platform() == "Darwin":
+            # Check if we're inside a .app bundle
+            parts = exe_path.parts
+            for i, part in enumerate(parts):
+                if part.endswith('.app'):
+                    # Return the .app bundle path
+                    return Path(*parts[:i+1])
+        
+        return exe_path
     else:
         # Running as script
         return Path(__file__).parent / "project_launcher.py"
+
+
+def get_app_bundle_path() -> Path | None:
+    """Get the .app bundle path on macOS, or None if not in a bundle."""
+    if get_platform() != "Darwin" or not getattr(sys, 'frozen', False):
+        return None
+    
+    exe_path = Path(sys.executable)
+    parts = exe_path.parts
+    for i, part in enumerate(parts):
+        if part.endswith('.app'):
+            return Path(*parts[:i+1])
+    return None
 
 
 def get_install_dir() -> Path:
@@ -31,7 +56,12 @@ def get_install_dir() -> Path:
     if get_platform() == "Windows":
         return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "ProjectLauncher"
     elif get_platform() == "Darwin":
-        return Path.home() / "Applications" / "ProjectLauncher"
+        # On macOS, install to /Applications (visible in Finder)
+        # Falls back to ~/Applications if /Applications is not writable
+        system_apps = Path("/Applications")
+        if os.access(system_apps, os.W_OK):
+            return system_apps
+        return Path.home() / "Applications"
     else:  # Linux
         return Path.home() / ".local" / "share" / "ProjectLauncher"
 
@@ -42,7 +72,7 @@ def is_installed() -> bool:
     install_dir = get_install_dir()
     
     try:
-        # Check if current exe is inside the install directory
+        # Check if current exe/app is inside the install directory
         exe_path.relative_to(install_dir)
         return True
     except ValueError:
@@ -50,12 +80,13 @@ def is_installed() -> bool:
 
 
 def get_installed_exe_path() -> Path:
-    """Get the path where the exe should be installed."""
+    """Get the path where the exe/app should be installed."""
     install_dir = get_install_dir()
     if get_platform() == "Windows":
         return install_dir / "ProjectLauncher.exe"
     elif get_platform() == "Darwin":
-        return install_dir / "ProjectLauncher"
+        # On macOS, return the .app bundle path
+        return install_dir / "ProjectLauncher.app"
     else:  # Linux
         return install_dir / "project-launcher"
 
@@ -320,26 +351,34 @@ def install_application(create_desktop: bool = True, create_start_menu: bool = T
         # Create install directory
         install_dir.mkdir(parents=True, exist_ok=True)
         
-        # Copy executable to install location
-        shutil.copy2(current_exe, target_exe)
-        
-        # Make executable on Unix
-        if get_platform() != "Windows":
-            os.chmod(target_exe, 0o755)
-        
-        # Copy assets if they exist (for icons)
-        current_dir = current_exe.parent
-        assets_dir = current_dir / "assets"
-        if assets_dir.exists():
-            target_assets = install_dir / "assets"
-            if target_assets.exists():
-                shutil.rmtree(target_assets)
-            shutil.copytree(assets_dir, target_assets)
+        # On macOS, copy the entire .app bundle
+        if get_platform() == "Darwin" and current_exe.suffix == ".app":
+            # Remove existing .app if present
+            if target_exe.exists():
+                shutil.rmtree(target_exe)
+            # Copy entire .app bundle
+            shutil.copytree(current_exe, target_exe, symlinks=True)
+        else:
+            # Copy executable to install location (Windows/Linux)
+            shutil.copy2(current_exe, target_exe)
+            
+            # Make executable on Unix
+            if get_platform() != "Windows":
+                os.chmod(target_exe, 0o755)
+            
+            # Copy assets if they exist (for icons)
+            current_dir = current_exe.parent
+            assets_dir = current_dir / "assets"
+            if assets_dir.exists():
+                target_assets = install_dir / "assets"
+                if target_assets.exists():
+                    shutil.rmtree(target_assets)
+                shutil.copytree(assets_dir, target_assets)
         
         result["success"] = True
         result["install_path"] = str(target_exe)
         
-        # Create shortcuts
+        # Create shortcuts (Windows only for now)
         if create_desktop:
             create_desktop_shortcut()
         if create_start_menu:
@@ -395,10 +434,38 @@ def _enable_macos_startup() -> bool:
         launch_agents_dir.mkdir(parents=True, exist_ok=True)
         
         exe_path = get_executable_path()
-        working_dir = exe_path.parent
         
-        # Create LaunchAgent plist
-        plist_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+        # For .app bundles, use 'open' command with --args
+        if exe_path.suffix == ".app":
+            plist_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.projectlauncher</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>-a</string>
+        <string>{exe_path}</string>
+        <string>--args</string>
+        <string>--auto</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>LaunchOnlyOnce</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/projectlauncher.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/projectlauncher.err</string>
+</dict>
+</plist>
+'''
+        else:
+            # For standalone binary (non-.app)
+            working_dir = exe_path.parent
+            plist_content = f'''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>

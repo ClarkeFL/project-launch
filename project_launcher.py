@@ -1440,7 +1440,9 @@ class InstallDialog(BaseDialog):
     """Install dialog shown on first run when not installed."""
     
     def __init__(self, parent):
-        super().__init__(parent, "Install Project Launcher", width=480, height=380)
+        # Smaller dialog on macOS (fewer options)
+        height = 300 if platform.system() == "Darwin" else 380
+        super().__init__(parent, "Install Project Launcher", width=480, height=height)
         self._create()
         self._center()
     
@@ -1459,9 +1461,13 @@ class InstallDialog(BaseDialog):
         
         # Description
         install_dir = get_install_dir()
+        if platform.system() == "Darwin":
+            install_text = f"This will copy the app to:\n{install_dir}/ProjectLauncher.app"
+        else:
+            install_text = f"This will copy the application to:\n{install_dir}"
         tk.Label(
             main, 
-            text=f"This will copy the application to:\n{install_dir}",
+            text=install_text,
             font=Theme.font(10), 
             fg=Theme.FG, 
             bg=Theme.BG, 
@@ -1474,26 +1480,29 @@ class InstallDialog(BaseDialog):
         
         tk.Label(options_frame, text="Options:", font=Theme.font(10, bold=True), fg=Theme.FG_BRIGHT, bg=Theme.BG).pack(anchor="w", pady=(0, 8))
         
-        # Desktop shortcut (default: checked)
+        # Desktop shortcut (Windows only)
         self.desktop_var = tk.BooleanVar(value=True)
-        row1 = tk.Frame(options_frame, bg=Theme.BG)
-        row1.pack(fill=tk.X, pady=2)
-        tk.Checkbutton(row1, variable=self.desktop_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
-        tk.Label(row1, text="Create Desktop shortcut", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
+        if platform.system() == "Windows":
+            row1 = tk.Frame(options_frame, bg=Theme.BG)
+            row1.pack(fill=tk.X, pady=2)
+            tk.Checkbutton(row1, variable=self.desktop_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
+            tk.Label(row1, text="Create Desktop shortcut", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
         
-        # Start Menu shortcut (default: checked)
+        # Start Menu shortcut (Windows only)
         self.startmenu_var = tk.BooleanVar(value=True)
-        row2 = tk.Frame(options_frame, bg=Theme.BG)
-        row2.pack(fill=tk.X, pady=2)
-        tk.Checkbutton(row2, variable=self.startmenu_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
-        tk.Label(row2, text="Create Start Menu shortcut", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
+        if platform.system() == "Windows":
+            row2 = tk.Frame(options_frame, bg=Theme.BG)
+            row2.pack(fill=tk.X, pady=2)
+            tk.Checkbutton(row2, variable=self.startmenu_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
+            tk.Label(row2, text="Create Start Menu shortcut", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
         
-        # Start with Windows (default: checked)
+        # Start at login
         self.startup_var = tk.BooleanVar(value=True)
         row3 = tk.Frame(options_frame, bg=Theme.BG)
         row3.pack(fill=tk.X, pady=2)
         tk.Checkbutton(row3, variable=self.startup_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
-        tk.Label(row3, text="Start with Windows", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
+        startup_text = "Start at login" if platform.system() == "Darwin" else "Start with Windows"
+        tk.Label(row3, text=startup_text, font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
         
         # Buttons
         btns = tk.Frame(main, bg=Theme.BG)
@@ -1692,6 +1701,11 @@ class App:
     
     def _setup_tray(self):
         """Setup system tray icon."""
+        # Skip tray icon on macOS - pystray conflicts with Tkinter's Cocoa event loop
+        # causing crashes when launched via Finder/LaunchServices
+        if platform.system() == "Darwin":
+            return
+        
         # Lazy load tray modules for faster startup
         if not _lazy_load_tray_modules():
             return
@@ -1743,11 +1757,12 @@ class App:
         self.root.withdraw()
     
     def _on_close(self):
-        """Handle window close - hide to tray instead of quitting."""
-        if HAS_TRAY and self.tray_icon:
-            self._hide_window()
-        else:
+        """Handle window close - hide to tray on Windows/Linux, quit on macOS."""
+        # On macOS we don't have tray (disabled due to Tkinter conflict), so just quit
+        if platform.system() == "Darwin" or not HAS_TRAY or not self.tray_icon:
             self._quit_app()
+        else:
+            self._hide_window()
     
     def _quit_app(self):
         """Fully quit the application."""
@@ -1777,13 +1792,22 @@ class App:
                     
                     # Show success message with option to restart from installed location
                     install_path = dlg.result.get("install_path", "")
-                    messagebox.showinfo(
-                        "Installed Successfully",
-                        f"Project Launcher has been installed!\n\n"
-                        f"Location: {install_path}\n\n"
-                        f"You can delete this downloaded file.\n"
-                        f"Use the Desktop or Start Menu shortcut to launch."
-                    )
+                    if platform.system() == "Darwin":
+                        messagebox.showinfo(
+                            "Installed Successfully",
+                            f"Project Launcher has been installed!\n\n"
+                            f"Location: {install_path}\n\n"
+                            f"You can delete this downloaded file.\n"
+                            f"The app is now in your Applications folder."
+                        )
+                    else:
+                        messagebox.showinfo(
+                            "Installed Successfully",
+                            f"Project Launcher has been installed!\n\n"
+                            f"Location: {install_path}\n\n"
+                            f"You can delete this downloaded file.\n"
+                            f"Use the Desktop or Start Menu shortcut to launch."
+                        )
                     
                 elif action == "portable":
                     # Running portable, just enable startup if requested
@@ -1857,7 +1881,7 @@ class App:
         controls = tk.Frame(titlebar, bg=Theme.BG_SECONDARY)
         controls.pack(side=tk.RIGHT, padx=8)
         
-        # Minimize (hide to tray)
+        # Minimize (hide to tray on Windows/Linux, quit on macOS)
         min_btn = tk.Label(
             controls,
             text="─",
@@ -1870,7 +1894,7 @@ class App:
         min_btn.pack(side=tk.LEFT)
         min_btn.bind("<Enter>", lambda e: min_btn.config(fg=Theme.FG))
         min_btn.bind("<Leave>", lambda e: min_btn.config(fg=Theme.FG_DIM))
-        min_btn.bind("<Button-1>", lambda e: self._hide_window())
+        min_btn.bind("<Button-1>", lambda e: self._on_close())
         
         # Close (quit app)
         close_btn = tk.Label(
