@@ -94,708 +94,12 @@ from startup_manager import (
 )
 log("startup_manager imported")
 
-
-# =============================================================================
-# Theme - Clean Developer Aesthetic
-# =============================================================================
-
-class Theme:
-    """Minimal developer theme."""
-    # Backgrounds
-    BG = "#1e1e1e"
-    BG_SECONDARY = "#252526"
-    BG_CARD = "#2d2d2d"
-    BG_CARD_HOVER = "#383838"
-    BG_INPUT = "#3c3c3c"
-    
-    # Text
-    FG = "#cccccc"
-    FG_DIM = "#808080"
-    FG_BRIGHT = "#ffffff"
-    
-    # Accents - subtle
-    ACCENT = "#0078d4"
-    GREEN = "#4ec9b0"
-    YELLOW = "#dcdcaa"
-    RED = "#f14c4c"
-    ORANGE = "#ce9178"
-    BLUE = "#569cd6"
-    
-    # Border
-    BORDER = "#404040"
-    
-    # Fonts - monospace
-    if platform.system() == "Windows":
-        FONT_MONO = "Cascadia Code"
-        FONT_FALLBACK = "Consolas"
-    elif platform.system() == "Darwin":
-        FONT_MONO = "SF Mono"
-        FONT_FALLBACK = "Monaco"
-    else:
-        FONT_MONO = "JetBrains Mono"
-        FONT_FALLBACK = "monospace"
-    
-    @classmethod
-    def font(cls, size=10, bold=False):
-        weight = "bold" if bold else "normal"
-        return (cls.FONT_MONO, size, weight)
-
-
-# =============================================================================
-# Minimal Components
-# =============================================================================
-
-class TextButton(tk.Label):
-    """Simple text button with hover."""
-    
-    def __init__(self, parent, text, command=None, fg=Theme.FG_DIM, hover_fg=Theme.ACCENT, **kwargs):
-        super().__init__(
-            parent,
-            text=text,
-            font=Theme.font(10),
-            fg=fg,
-            cursor="hand2",
-            **kwargs
-        )
-        self.command = command
-        self.fg = fg
-        self.hover_fg = hover_fg
-        
-        self.bind("<Enter>", lambda e: self.config(fg=self.hover_fg))
-        self.bind("<Leave>", lambda e: self.config(fg=self.fg))
-        self.bind("<Button-1>", lambda e: self.command() if self.command else None)
-
-
-class Entry(tk.Frame):
-    """Minimal entry field."""
-    
-    def __init__(self, parent, placeholder="", **kwargs):
-        super().__init__(parent, bg=Theme.BG_INPUT, highlightthickness=1, highlightbackground=Theme.BORDER)
-        
-        self.placeholder = placeholder
-        self.entry = tk.Entry(
-            self,
-            font=Theme.font(10),
-            bg=Theme.BG_INPUT,
-            fg=Theme.FG,
-            insertbackground=Theme.FG,
-            relief=tk.FLAT,
-            highlightthickness=0
-        )
-        self.entry.pack(fill=tk.X, padx=8, pady=6)
-        
-        if placeholder:
-            self.entry.insert(0, placeholder)
-            self.entry.config(fg=Theme.FG_DIM)
-        
-        self.entry.bind("<FocusIn>", self._focus_in)
-        self.entry.bind("<FocusOut>", self._focus_out)
-        self.bind("<FocusIn>", lambda e: self.config(highlightbackground=Theme.ACCENT))
-        self.bind("<FocusOut>", lambda e: self.config(highlightbackground=Theme.BORDER))
-    
-    def _focus_in(self, e):
-        self.config(highlightbackground=Theme.ACCENT)
-        if self.entry.get() == self.placeholder:
-            self.entry.delete(0, tk.END)
-            self.entry.config(fg=Theme.FG)
-    
-    def _focus_out(self, e):
-        self.config(highlightbackground=Theme.BORDER)
-        if not self.entry.get() and self.placeholder:
-            self.entry.insert(0, self.placeholder)
-            self.entry.config(fg=Theme.FG_DIM)
-    
-    def get(self):
-        v = self.entry.get()
-        return "" if v == self.placeholder else v
-    
-    def insert(self, i, v):
-        self.entry.delete(0, tk.END)
-        self.entry.insert(i, v)
-        self.entry.config(fg=Theme.FG)
-    
-    def delete(self, a, b):
-        self.entry.delete(a, b)
-    
-    def focus_set(self):
-        self.entry.focus_set()
-    
-    def bind_key(self, seq, fn):
-        self.entry.bind(seq, fn)
-
-
-class Button(tk.Frame):
-    """Minimal button."""
-    
-    def __init__(self, parent, text, command=None, primary=False, **kwargs):
-        bg = Theme.ACCENT if primary else Theme.BG_SECONDARY
-        super().__init__(parent, bg=bg, cursor="hand2")
-        
-        self.command = command
-        self.bg = bg
-        self.hover_bg = "#1177bb" if primary else Theme.BG_CARD_HOVER
-        
-        self.label = tk.Label(
-            self,
-            text=text,
-            font=Theme.font(10),
-            fg=Theme.FG_BRIGHT if primary else Theme.FG,
-            bg=bg,
-            padx=16,
-            pady=6
-        )
-        self.label.pack()
-        
-        for w in [self, self.label]:
-            w.bind("<Enter>", self._enter)
-            w.bind("<Leave>", self._leave)
-            w.bind("<Button-1>", self._click)
-    
-    def _enter(self, e):
-        self.config(bg=self.hover_bg)
-        self.label.config(bg=self.hover_bg)
-    
-    def _leave(self, e):
-        self.config(bg=self.bg)
-        self.label.config(bg=self.bg)
-    
-    def _click(self, e):
-        if self.command:
-            self.command()
-
-
-class ActionButton(tk.Frame):
-    """Styled action button for project cards."""
-    
-    def __init__(self, parent, text, command=None, fg=Theme.FG_DIM, hover_fg=Theme.ACCENT, padx=12, pady=6, **kwargs):
-        bg = kwargs.pop('bg', Theme.BG_CARD)
-        super().__init__(parent, bg=bg, cursor="hand2")
-        
-        self.command = command
-        self.fg = fg
-        self.hover_fg = hover_fg
-        self.bg = bg
-        self.hover_bg = Theme.BG_CARD_HOVER
-        
-        self.label = tk.Label(
-            self,
-            text=text,
-            font=Theme.font(11),
-            fg=fg,
-            bg=bg,
-            padx=padx,
-            pady=pady
-        )
-        self.label.pack()
-        
-        for w in [self, self.label]:
-            w.bind("<Enter>", self._enter)
-            w.bind("<Leave>", self._leave)
-            w.bind("<Button-1>", self._click)
-    
-    def _enter(self, e):
-        self.label.config(fg=self.hover_fg)
-    
-    def _leave(self, e):
-        self.label.config(fg=self.fg)
-    
-    def _click(self, e):
-        if self.command:
-            self.command()
-    
-    def update_bg(self, bg):
-        """Update background color."""
-        self.bg = bg
-        self.config(bg=bg)
-        self.label.config(bg=bg)
-
-
-class ToggleButton(tk.Frame):
-    """Toggle button that can be selected/deselected."""
-    
-    def __init__(self, parent, text, selected=False, on_toggle=None, **kwargs):
-        super().__init__(parent, bg=Theme.BG_SECONDARY, cursor="hand2")
-        
-        self.text = text
-        self._selected = selected
-        self.on_toggle = on_toggle
-        
-        self.label = tk.Label(
-            self,
-            text=text,
-            font=Theme.font(9),
-            fg=Theme.FG,
-            bg=Theme.BG_SECONDARY,
-            padx=14,
-            pady=6
-        )
-        self.label.pack()
-        
-        self._update_style()
-        
-        for w in [self, self.label]:
-            w.bind("<Enter>", self._enter)
-            w.bind("<Leave>", self._leave)
-            w.bind("<Button-1>", self._click)
-    
-    @property
-    def selected(self):
-        return self._selected
-    
-    @selected.setter
-    def selected(self, value):
-        self._selected = value
-        self._update_style()
-    
-    def _update_style(self):
-        if self._selected:
-            self.config(bg=Theme.ACCENT)
-            self.label.config(bg=Theme.ACCENT, fg=Theme.FG_BRIGHT)
-        else:
-            self.config(bg=Theme.BG_SECONDARY)
-            self.label.config(bg=Theme.BG_SECONDARY, fg=Theme.FG_DIM)
-    
-    def _enter(self, e):
-        if not self._selected:
-            self.config(bg=Theme.BG_CARD_HOVER)
-            self.label.config(bg=Theme.BG_CARD_HOVER, fg=Theme.FG)
-    
-    def _leave(self, e):
-        self._update_style()
-    
-    def _click(self, e):
-        self._selected = not self._selected
-        self._update_style()
-        if self.on_toggle:
-            self.on_toggle(self.text, self._selected)
-
-
-class ToggleButtonGroup(tk.Frame):
-    """Group of toggle buttons - can be multi-select or single-select."""
-    
-    def __init__(self, parent, options, multi=True, columns=None, **kwargs):
-        super().__init__(parent, bg=Theme.BG, **kwargs)
-        
-        self.multi = multi
-        self.buttons = {}
-        self.options = options
-        
-        # Auto-calculate columns if not specified
-        if columns is None:
-            columns = min(len(options), 5)
-        
-        # Create grid of buttons
-        row_frame = tk.Frame(self, bg=Theme.BG)
-        row_frame.pack(fill=tk.X)
-        
-        for i, (key, label) in enumerate(options):
-            if i > 0 and i % columns == 0:
-                row_frame = tk.Frame(self, bg=Theme.BG)
-                row_frame.pack(fill=tk.X, pady=(4, 0))
-            
-            btn = ToggleButton(
-                row_frame, 
-                label, 
-                selected=False, 
-                on_toggle=lambda t, s, k=key: self._on_toggle(k, s)
-            )
-            btn.pack(side=tk.LEFT, padx=(0, 4))
-            self.buttons[key] = btn
-    
-    def _on_toggle(self, key, selected):
-        if not self.multi and selected:
-            # Deselect all others
-            for k, btn in self.buttons.items():
-                if k != key:
-                    btn.selected = False
-    
-    def get_selected(self):
-        """Return list of selected keys."""
-        return [k for k, btn in self.buttons.items() if btn.selected]
-    
-    def set_selected(self, keys):
-        """Set selected keys."""
-        for k, btn in self.buttons.items():
-            btn.selected = k in keys
-
-
-class Dropdown(tk.Frame):
-    """Custom styled dropdown."""
-    
-    def __init__(self, parent, options, default=None, on_change=None, **kwargs):
-        super().__init__(parent, bg=Theme.BG_INPUT, highlightthickness=1, 
-                        highlightbackground=Theme.BORDER, cursor="hand2")
-        
-        self.options = options  # List of (key, label) tuples
-        self.on_change = on_change
-        self._selected_key = default or (options[0][0] if options else None)
-        
-        # Find label for selected key
-        selected_label = next((l for k, l in options if k == self._selected_key), "")
-        
-        self.label = tk.Label(
-            self,
-            text=selected_label,
-            font=Theme.font(10),
-            fg=Theme.FG,
-            bg=Theme.BG_INPUT,
-            anchor="w",
-            padx=12,
-            pady=8
-        )
-        self.label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        self.arrow = tk.Label(
-            self,
-            text="▼",
-            font=Theme.font(8),
-            fg=Theme.FG_DIM,
-            bg=Theme.BG_INPUT,
-            padx=12
-        )
-        self.arrow.pack(side=tk.RIGHT)
-        
-        for w in [self, self.label, self.arrow]:
-            w.bind("<Button-1>", self._show_menu)
-            w.bind("<Enter>", lambda e: self.config(highlightbackground=Theme.ACCENT))
-            w.bind("<Leave>", lambda e: self.config(highlightbackground=Theme.BORDER))
-    
-    def _show_menu(self, e):
-        menu = tk.Menu(self, tearoff=0, bg=Theme.BG_SECONDARY, fg=Theme.FG,
-                      activebackground=Theme.ACCENT, activeforeground=Theme.FG_BRIGHT,
-                      font=Theme.font(10), borderwidth=0)
-        
-        for key, label in self.options:
-            menu.add_command(label=label, command=lambda k=key, l=label: self._select(k, l))
-        
-        x = self.winfo_rootx()
-        y = self.winfo_rooty() + self.winfo_height()
-        menu.post(x, y)
-    
-    def _select(self, key, label):
-        self._selected_key = key
-        self.label.config(text=label)
-        if self.on_change:
-            self.on_change(key)
-    
-    def get(self):
-        return self._selected_key
-    
-    def set(self, key):
-        self._selected_key = key
-        label = next((l for k, l in self.options if k == key), "")
-        self.label.config(text=label)
-
-
-# =============================================================================
-# Custom Scrollbar
-# =============================================================================
-
-class CustomScrollbar(tk.Canvas):
-    """Modern custom scrollbar with hover effects."""
-    
-    def __init__(self, parent, command=None, **kwargs):
-        self.width = kwargs.pop('width', 8)
-        self.track_color = kwargs.pop('track_color', Theme.BG)
-        self.thumb_color = kwargs.pop('thumb_color', Theme.BORDER)
-        self.thumb_hover_color = kwargs.pop('thumb_hover_color', Theme.FG_DIM)
-        self.thumb_active_color = kwargs.pop('thumb_active_color', Theme.ACCENT)
-        
-        super().__init__(
-            parent,
-            width=self.width,
-            bg=self.track_color,
-            highlightthickness=0,
-            **kwargs
-        )
-        
-        self.command = command
-        self._thumb_pos = [0, 1]  # [start, end] as fractions 0-1
-        self._current_thumb_color = self.thumb_color
-        self._dragging = False
-        self._drag_start_y = 0
-        self._drag_start_pos = 0
-        self._thumb_id = None
-        self._visible = False
-        self._hover = False
-        
-        # Bind events
-        self.bind("<Configure>", self._on_configure)
-        self.bind("<Enter>", self._on_enter)
-        self.bind("<Leave>", self._on_leave)
-        self.bind("<Button-1>", self._on_click)
-        self.bind("<B1-Motion>", self._on_drag)
-        self.bind("<ButtonRelease-1>", self._on_release)
-        
-    def set(self, first, last):
-        """Set the scrollbar position (called by scrollable widget)."""
-        first, last = float(first), float(last)
-        self._thumb_pos = [first, last]
-        
-        # Check if scrollbar should be visible
-        self._visible = (last - first) < 1.0
-        self._draw_thumb()
-        
-    def _draw_thumb(self):
-        """Draw the scrollbar thumb."""
-        self.delete("thumb")
-        
-        if not self._visible:
-            return
-            
-        height = self.winfo_height()
-        if height <= 1:
-            return
-            
-        # Calculate thumb position and size
-        thumb_start = int(self._thumb_pos[0] * height)
-        thumb_end = int(self._thumb_pos[1] * height)
-        thumb_height = max(thumb_end - thumb_start, 30)  # Minimum thumb height
-        
-        # Adjust if thumb would be too small
-        if thumb_end - thumb_start < 30:
-            thumb_end = thumb_start + 30
-            if thumb_end > height:
-                thumb_end = height
-                thumb_start = height - 30
-        
-        # Draw rounded rectangle thumb with padding
-        padding = 2
-        radius = (self.width - padding * 2) // 2
-        
-        self._thumb_id = self._create_rounded_rect(
-            padding,
-            thumb_start + padding,
-            self.width - padding,
-            thumb_end - padding,
-            radius,
-            fill=self._current_thumb_color,
-            tags="thumb"
-        )
-        
-    def _create_rounded_rect(self, x1, y1, x2, y2, radius, **kwargs):
-        """Create a rounded rectangle."""
-        points = [
-            x1 + radius, y1,
-            x2 - radius, y1,
-            x2, y1,
-            x2, y1 + radius,
-            x2, y2 - radius,
-            x2, y2,
-            x2 - radius, y2,
-            x1 + radius, y2,
-            x1, y2,
-            x1, y2 - radius,
-            x1, y1 + radius,
-            x1, y1,
-        ]
-        return self.create_polygon(points, smooth=True, **kwargs)
-        
-    def _on_configure(self, event):
-        """Handle resize."""
-        self._draw_thumb()
-        
-    def _on_enter(self, event):
-        """Handle mouse enter."""
-        self._hover = True
-        if not self._dragging:
-            self._current_thumb_color = self.thumb_hover_color
-            self._draw_thumb()
-            
-    def _on_leave(self, event):
-        """Handle mouse leave."""
-        self._hover = False
-        if not self._dragging:
-            self._current_thumb_color = self.thumb_color
-            self._draw_thumb()
-            
-    def _on_click(self, event):
-        """Handle click on scrollbar."""
-        if not self._visible:
-            return
-            
-        height = self.winfo_height()
-        thumb_start = int(self._thumb_pos[0] * height)
-        thumb_end = int(self._thumb_pos[1] * height)
-        
-        # Check if click is on thumb
-        if thumb_start <= event.y <= thumb_end:
-            self._dragging = True
-            self._drag_start_y = event.y
-            self._drag_start_pos = self._thumb_pos[0]
-            self._current_thumb_color = self.thumb_active_color
-            self._draw_thumb()
-        else:
-            # Click on track - jump to position
-            click_fraction = event.y / height
-            thumb_size = self._thumb_pos[1] - self._thumb_pos[0]
-            new_pos = click_fraction - thumb_size / 2
-            new_pos = max(0, min(1 - thumb_size, new_pos))
-            if self.command:
-                self.command("moveto", str(new_pos))
-                
-    def _on_drag(self, event):
-        """Handle drag."""
-        if not self._dragging or not self._visible:
-            return
-            
-        height = self.winfo_height()
-        delta_y = event.y - self._drag_start_y
-        delta_fraction = delta_y / height
-        
-        thumb_size = self._thumb_pos[1] - self._thumb_pos[0]
-        new_pos = self._drag_start_pos + delta_fraction
-        new_pos = max(0, min(1 - thumb_size, new_pos))
-        
-        if self.command:
-            self.command("moveto", str(new_pos))
-            
-    def _on_release(self, event):
-        """Handle mouse release."""
-        self._dragging = False
-        if self._hover:
-            self._current_thumb_color = self.thumb_hover_color
-        else:
-            self._current_thumb_color = self.thumb_color
-        self._draw_thumb()
-
-
-# =============================================================================
-# Project Card
-# =============================================================================
-
-class ProjectCard(tk.Frame):
-    """Project list item."""
-    
-    def __init__(self, parent, project, index, on_launch, on_edit, on_delete):
-        super().__init__(parent, bg=Theme.BG_CARD, cursor="hand2")
-        
-        self.project = project
-        self.index = index
-        self.on_launch_cb = on_launch
-        self.on_edit_cb = on_edit
-        self.on_delete_cb = on_delete
-        self.action_buttons = []
-        
-        self._build_ui()
-    
-    def _build_ui(self):
-        self.config(padx=16, pady=12)
-        
-        # Left side - project info (no longer clickable)
-        left = tk.Frame(self, bg=Theme.BG_CARD)
-        left.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        # Name
-        self.name_lbl = tk.Label(
-            left,
-            text=self.project.get("name", "Untitled"),
-            font=Theme.font(11, bold=True),
-            fg=Theme.FG_BRIGHT,
-            bg=Theme.BG_CARD,
-            anchor="w"
-        )
-        self.name_lbl.pack(anchor="w")
-        
-        # Path
-        path = self.project.get("path", "")
-        if len(path) > 50:
-            path = "..." + path[-47:]
-        
-        self.path_lbl = tk.Label(
-            left,
-            text=path,
-            font=Theme.font(9),
-            fg=Theme.FG_DIM,
-            bg=Theme.BG_CARD,
-            anchor="w"
-        )
-        self.path_lbl.pack(anchor="w", pady=(2, 0))
-        
-        # Actions summary
-        actions = self.project.get("actions", [])
-        parts = []
-        for a in actions:
-            t = a.get("type")
-            if t == "ide":
-                ide = a.get("ide", "vscode")
-                parts.append(ide)
-            elif t == "vscode":
-                parts.append("code")
-            elif t == "ai_tool":
-                tool = a.get("tool", "")
-                parts.append(tool)
-            elif t == "terminal":
-                parts.append("term")
-            elif t == "browser":
-                parts.append("browser")
-        
-        if parts:
-            self.tags_lbl = tk.Label(
-                left,
-                text=" · ".join(parts),
-                font=Theme.font(9),
-                fg=Theme.FG_DIM,
-                bg=Theme.BG_CARD
-            )
-            self.tags_lbl.pack(anchor="w", pady=(4, 0))
-        
-        # Right side - action buttons
-        right = tk.Frame(self, bg=Theme.BG_CARD)
-        right.pack(side=tk.RIGHT)
-        
-        run_btn = ActionButton(right, "run", self._do_launch, fg=Theme.GREEN, hover_fg="#6ee7c2", bg=Theme.BG_CARD, padx=16, pady=8)
-        run_btn.pack(side=tk.LEFT, padx=4)
-        self.action_buttons.append(run_btn)
-        
-        edit_btn = ActionButton(right, "edit", self._do_edit, fg=Theme.FG_DIM, hover_fg=Theme.ACCENT, bg=Theme.BG_CARD)
-        edit_btn.pack(side=tk.LEFT, padx=4)
-        self.action_buttons.append(edit_btn)
-        
-        delete_btn = ActionButton(right, "×", self._do_delete, fg=Theme.FG_DIM, hover_fg=Theme.RED, bg=Theme.BG_CARD)
-        delete_btn.pack(side=tk.LEFT, padx=(4, 0))
-        self.action_buttons.append(delete_btn)
-        
-        # Hover effect on card (visual only, no click action)
-        for w in [self, left, self.name_lbl, self.path_lbl]:
-            w.bind("<Enter>", self._on_enter)
-            w.bind("<Leave>", self._on_leave)
-        
-        if hasattr(self, 'tags_lbl'):
-            self.tags_lbl.bind("<Enter>", self._on_enter)
-            self.tags_lbl.bind("<Leave>", self._on_leave)
-    
-    def _on_enter(self, e):
-        self._set_bg(Theme.BG_CARD_HOVER)
-    
-    def _on_leave(self, e):
-        self._set_bg(Theme.BG_CARD)
-    
-    def _set_bg(self, c):
-        self.config(bg=c)
-        for w in self.winfo_children():
-            self._update_child_bg(w, c)
-        # Update action buttons
-        for btn in self.action_buttons:
-            btn.update_bg(c)
-    
-    def _update_child_bg(self, w, c):
-        try:
-            if not isinstance(w, (ActionButton,)):
-                w.config(bg=c)
-            for child in w.winfo_children():
-                self._update_child_bg(child, c)
-        except:
-            pass
-    
-    def _do_launch(self):
-        self.on_launch_cb(self.index)
-    
-    def _do_edit(self):
-        self.on_edit_cb(self.index)
-    
-    def _do_delete(self):
-        self.on_delete_cb(self.index)
+# UI Components from refactored modules
+from app.theme import Theme
+from ui.widgets import TextButton, Entry, Button, ActionButton, ToggleButton, ToggleButtonGroup, Dropdown
+from ui.components.scrollbar import CustomScrollbar
+from ui.components.project_card import ProjectCard
+log("ui modules imported")
 
 
 # =============================================================================
@@ -812,6 +116,11 @@ class BaseDialog(tk.Toplevel):
         self._drag_data = {"x": 0, "y": 0}
         self._parent = parent
         
+        # Get platform handler for platform-specific behavior
+        from platform_handlers import get_platform_handler
+        self._platform_handler = get_platform_handler()
+        self._use_native_titlebar = self._platform_handler.use_native_dialog_titlebar
+        
         # Configure window
         self.geometry(f"{width}x{height}")
         self.configure(bg=Theme.BORDER)
@@ -825,8 +134,9 @@ class BaseDialog(tk.Toplevel):
         self._inner = tk.Frame(self._outer, bg=Theme.BG)
         self._inner.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
         
-        # Title bar
-        self._build_titlebar()
+        # Title bar - only build custom titlebar on platforms that use it
+        if not self._use_native_titlebar:
+            self._build_titlebar()
         
         # Content area - subclasses add to this
         self.content = tk.Frame(self._inner, bg=Theme.BG)
@@ -836,7 +146,13 @@ class BaseDialog(tk.Toplevel):
         # On Windows, order matters a lot
         self.withdraw()  # Hide first
         self.transient(parent)
-        self.overrideredirect(True)
+        
+        if self._use_native_titlebar:
+            # macOS: Use native titlebar for proper keyboard focus
+            self.title(self._title)
+        else:
+            # Windows/Linux: Use custom frameless dialog
+            self.overrideredirect(True)
         
         # Position and show
         self.update_idletasks()
@@ -845,7 +161,11 @@ class BaseDialog(tk.Toplevel):
         # Ensure dialog stays on top of main window
         self.attributes('-topmost', True)
         
-        self.grab_set()
+        # Only use grab_set on platforms with custom titlebar
+        # On macOS, grab_set can cause issues with keyboard focus
+        if not self._use_native_titlebar:
+            self.grab_set()
+        
         self.lift()
         self.focus_force()
     
@@ -917,8 +237,23 @@ class BaseDialog(tk.Toplevel):
         self.focus_force()
     
     def _cancel(self):
+        # Release grab if we acquired it (non-macOS platforms)
+        if not self._use_native_titlebar:
+            try:
+                self.grab_release()
+            except tk.TclError:
+                pass  # Window may already be destroyed
         self.result = None
         self.destroy()
+    
+    def destroy(self):
+        """Override destroy to ensure grab is released."""
+        if not self._use_native_titlebar:
+            try:
+                self.grab_release()
+            except tk.TclError:
+                pass  # Already released or window destroyed
+        super().destroy()
 
 
 # =============================================================================
@@ -1405,11 +740,34 @@ class SettingsDialog(BaseDialog):
     
     def _uninstall(self):
         """Handle uninstall request."""
-        if messagebox.askyesno("Uninstall", "Remove all shortcuts?\n\nThe application file will remain - you can delete it manually."):
-            result = uninstall_application()
+        dlg = UninstallDialog(self)
+        self.wait_window(dlg)
+        
+        if dlg.result:
+            remove_app = dlg.result.get("remove_app", False)
+            remove_config = dlg.result.get("remove_config", False)
+            
+            result = uninstall_application(remove_app=remove_app, remove_config=remove_config)
+            
             if result["success"]:
-                messagebox.showinfo("Uninstalled", "Shortcuts removed.\n\nYou can delete the application folder manually if desired:\n" + str(get_install_dir()))
-                self._cancel()
+                # Build message based on what was removed
+                msg_parts = ["Uninstall complete."]
+                if remove_app:
+                    msg_parts.append("Application files removed.")
+                else:
+                    msg_parts.append(f"Application folder remains at:\n{get_install_dir()}")
+                if remove_config:
+                    msg_parts.append("Configuration removed.")
+                
+                messagebox.showinfo("Uninstalled", "\n\n".join(msg_parts))
+                
+                # If we removed the app, we should quit
+                if remove_app:
+                    self._cancel()
+                    # Signal to quit the app
+                    self.result = {"quit": True}
+                else:
+                    self._cancel()
             else:
                 messagebox.showerror("Error", f"Uninstall failed: {result['error']}")
     
@@ -1433,6 +791,168 @@ class SettingsDialog(BaseDialog):
         # Update config
         self.config["settings"]["show_on_startup"] = self.startup_var.get()
         self.result = self.config
+        self.destroy()
+
+
+class UninstallDialog(BaseDialog):
+    """Uninstall dialog with options for what to remove."""
+    
+    def __init__(self, parent):
+        super().__init__(parent, "Uninstall", width=420, height=340)
+        self._create()
+        self._center()
+    
+    def _create(self):
+        main = tk.Frame(self.content, bg=Theme.BG, padx=24, pady=20)
+        main.pack(fill=tk.BOTH, expand=True)
+        
+        # Warning icon/title
+        tk.Label(
+            main, 
+            text="Uninstall Project Launcher?", 
+            font=Theme.font(12, bold=True), 
+            fg=Theme.FG_BRIGHT, 
+            bg=Theme.BG
+        ).pack(pady=(0, 16))
+        
+        # Options section
+        tk.Label(
+            main, 
+            text="Select what to remove:", 
+            font=Theme.font(10), 
+            fg=Theme.FG, 
+            bg=Theme.BG
+        ).pack(anchor="w", pady=(0, 12))
+        
+        # Option 1: Remove shortcuts (always checked, disabled)
+        row1 = tk.Frame(main, bg=Theme.BG)
+        row1.pack(fill=tk.X, pady=4)
+        self.shortcuts_var = tk.BooleanVar(value=True)
+        cb1 = tk.Checkbutton(
+            row1, 
+            variable=self.shortcuts_var, 
+            bg=Theme.BG, 
+            activebackground=Theme.BG, 
+            selectcolor=Theme.BG_INPUT,
+            state=tk.DISABLED  # Always remove shortcuts
+        )
+        cb1.pack(side=tk.LEFT)
+        tk.Label(
+            row1, 
+            text="Remove shortcuts & startup entry", 
+            font=Theme.font(10), 
+            fg=Theme.FG, 
+            bg=Theme.BG
+        ).pack(side=tk.LEFT)
+        
+        # Option 2: Remove application files
+        row2 = tk.Frame(main, bg=Theme.BG)
+        row2.pack(fill=tk.X, pady=4)
+        self.app_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            row2, 
+            variable=self.app_var, 
+            bg=Theme.BG, 
+            activebackground=Theme.BG, 
+            selectcolor=Theme.BG_INPUT
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            row2, 
+            text="Remove application files", 
+            font=Theme.font(10), 
+            fg=Theme.FG, 
+            bg=Theme.BG
+        ).pack(side=tk.LEFT)
+        
+        # Show install location
+        install_dir = get_install_dir()
+        tk.Label(
+            main, 
+            text=f"  ({install_dir})", 
+            font=Theme.font(8), 
+            fg=Theme.FG_DIM, 
+            bg=Theme.BG,
+            wraplength=350,
+            justify="left"
+        ).pack(anchor="w", pady=(0, 4))
+        
+        # Option 3: Remove config/data
+        row3 = tk.Frame(main, bg=Theme.BG)
+        row3.pack(fill=tk.X, pady=4)
+        self.config_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            row3, 
+            variable=self.config_var, 
+            bg=Theme.BG, 
+            activebackground=Theme.BG, 
+            selectcolor=Theme.BG_INPUT
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            row3, 
+            text="Remove configuration & project data", 
+            font=Theme.font(10), 
+            fg=Theme.FG, 
+            bg=Theme.BG
+        ).pack(side=tk.LEFT)
+        
+        # Show config location
+        config_dir = get_config_dir()
+        tk.Label(
+            main, 
+            text=f"  ({config_dir})", 
+            font=Theme.font(8), 
+            fg=Theme.FG_DIM, 
+            bg=Theme.BG,
+            wraplength=350,
+            justify="left"
+        ).pack(anchor="w")
+        
+        # Warning for config removal
+        self.warning_label = tk.Label(
+            main, 
+            text="", 
+            font=Theme.font(9), 
+            fg=Theme.RED, 
+            bg=Theme.BG,
+            wraplength=350
+        )
+        self.warning_label.pack(anchor="w", pady=(8, 0))
+        
+        # Update warning when config checkbox changes
+        self.config_var.trace_add("write", self._update_warning)
+        
+        # Buttons
+        btns = tk.Frame(main, bg=Theme.BG)
+        btns.pack(fill=tk.X, pady=(20, 0))
+        
+        Button(btns, "Uninstall", self._uninstall, primary=True).pack(side=tk.RIGHT, padx=(8, 0))
+        Button(btns, "Cancel", self._cancel).pack(side=tk.RIGHT)
+    
+    def _update_warning(self, *args):
+        """Show/hide warning when config removal is selected."""
+        if self.config_var.get():
+            self.warning_label.config(text="Warning: This will delete all your saved projects!")
+        else:
+            self.warning_label.config(text="")
+    
+    def _uninstall(self):
+        """Perform uninstall with selected options."""
+        remove_app = self.app_var.get()
+        remove_config = self.config_var.get()
+        
+        # Confirm if removing config
+        if remove_config:
+            if not messagebox.askyesno(
+                "Confirm", 
+                "Are you sure you want to remove all configuration and project data?\n\n"
+                "This cannot be undone!"
+            ):
+                return
+        
+        self.result = {
+            "remove_app": remove_app,
+            "remove_config": remove_config
+        }
         self.destroy()
 
 
@@ -1664,10 +1184,16 @@ class App:
         self.root.configure(bg=Theme.BG)
         self.root.minsize(480, 400)
         
-        # Remove window decorations
-        self.root.overrideredirect(True)
+        # Get platform handler for platform-specific behavior
+        from platform_handlers import get_platform_handler
+        self._platform_handler = get_platform_handler()
+        self._use_native_titlebar = self._platform_handler.use_native_window_titlebar
         
-        # For dragging the window
+        # Remove window decorations only on Windows/Linux
+        if not self._use_native_titlebar:
+            self.root.overrideredirect(True)
+        
+        # For dragging the window (only used with custom titlebar)
         self._drag_data = {"x": 0, "y": 0}
         
         self.config = load_config()
@@ -1838,92 +1364,12 @@ class App:
         inner = tk.Frame(self.main_container, bg=Theme.BG)
         inner.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
         
-        # Title bar (draggable)
-        titlebar = tk.Frame(inner, bg=Theme.BG_SECONDARY, height=40)
-        titlebar.pack(fill=tk.X)
-        titlebar.pack_propagate(False)
-        
-        # Drag bindings
-        titlebar.bind("<Button-1>", self._start_drag)
-        titlebar.bind("<B1-Motion>", self._do_drag)
-        
-        # Logo + Title container
-        title_container = tk.Frame(titlebar, bg=Theme.BG_SECONDARY)
-        title_container.pack(side=tk.LEFT, padx=12)
-        title_container.bind("<Button-1>", self._start_drag)
-        title_container.bind("<B1-Motion>", self._do_drag)
-        
-        # Logo image
-        self._logo_image = load_logo_image(24)  # Keep reference to prevent garbage collection
-        if self._logo_image:
-            logo_lbl = tk.Label(
-                title_container,
-                image=self._logo_image,
-                bg=Theme.BG_SECONDARY
-            )
-            logo_lbl.pack(side=tk.LEFT, padx=(0, 8))
-            logo_lbl.bind("<Button-1>", self._start_drag)
-            logo_lbl.bind("<B1-Motion>", self._do_drag)
-        
-        # Title
-        title_lbl = tk.Label(
-            title_container,
-            text="projects",
-            font=Theme.font(12, bold=True),
-            fg=Theme.FG_BRIGHT,
-            bg=Theme.BG_SECONDARY
-        )
-        title_lbl.pack(side=tk.LEFT)
-        title_lbl.bind("<Button-1>", self._start_drag)
-        title_lbl.bind("<B1-Motion>", self._do_drag)
-        
-        # Window controls
-        controls = tk.Frame(titlebar, bg=Theme.BG_SECONDARY)
-        controls.pack(side=tk.RIGHT, padx=8)
-        
-        # Minimize (hide to tray on Windows/Linux, quit on macOS)
-        min_btn = tk.Label(
-            controls,
-            text="─",
-            font=Theme.font(10),
-            fg=Theme.FG_DIM,
-            bg=Theme.BG_SECONDARY,
-            padx=8,
-            cursor="hand2"
-        )
-        min_btn.pack(side=tk.LEFT)
-        min_btn.bind("<Enter>", lambda e: min_btn.config(fg=Theme.FG))
-        min_btn.bind("<Leave>", lambda e: min_btn.config(fg=Theme.FG_DIM))
-        min_btn.bind("<Button-1>", lambda e: self._on_close())
-        
-        # Close (quit app)
-        close_btn = tk.Label(
-            controls,
-            text="×",
-            font=Theme.font(14),
-            fg=Theme.FG_DIM,
-            bg=Theme.BG_SECONDARY,
-            padx=8,
-            cursor="hand2"
-        )
-        close_btn.pack(side=tk.LEFT)
-        close_btn.bind("<Enter>", lambda e: close_btn.config(fg=Theme.RED))
-        close_btn.bind("<Leave>", lambda e: close_btn.config(fg=Theme.FG_DIM))
-        close_btn.bind("<Button-1>", lambda e: self._quit_app())
-        
-        # Settings in titlebar
-        settings_btn = tk.Label(
-            titlebar,
-            text="settings",
-            font=Theme.font(10),
-            fg=Theme.FG_DIM,
-            bg=Theme.BG_SECONDARY,
-            cursor="hand2"
-        )
-        settings_btn.pack(side=tk.RIGHT, padx=16)
-        settings_btn.bind("<Enter>", lambda e: settings_btn.config(fg=Theme.ACCENT))
-        settings_btn.bind("<Leave>", lambda e: settings_btn.config(fg=Theme.FG_DIM))
-        settings_btn.bind("<Button-1>", lambda e: self._settings())
+        # Build custom titlebar only on Windows/Linux (not on macOS with native titlebar)
+        if not self._use_native_titlebar:
+            self._build_custom_titlebar(inner)
+        else:
+            # On macOS with native titlebar, just add a simple header with settings
+            self._build_native_header(inner)
         
         # Separator
         tk.Frame(inner, bg=Theme.BORDER, height=1).pack(fill=tk.X)
@@ -1979,6 +1425,139 @@ class App:
         self.update_btn.bind("<Enter>", lambda e: self.update_btn.config(fg=Theme.FG_BRIGHT))
         self.update_btn.bind("<Leave>", lambda e: self.update_btn.config(fg=Theme.GREEN))
         self.update_btn.bind("<Button-1>", lambda e: self._open_update())
+    
+    def _build_custom_titlebar(self, inner):
+        """Build custom draggable titlebar for Windows/Linux."""
+        titlebar = tk.Frame(inner, bg=Theme.BG_SECONDARY, height=40)
+        titlebar.pack(fill=tk.X)
+        titlebar.pack_propagate(False)
+        
+        # Drag bindings
+        titlebar.bind("<Button-1>", self._start_drag)
+        titlebar.bind("<B1-Motion>", self._do_drag)
+        
+        # Logo + Title container
+        title_container = tk.Frame(titlebar, bg=Theme.BG_SECONDARY)
+        title_container.pack(side=tk.LEFT, padx=12)
+        title_container.bind("<Button-1>", self._start_drag)
+        title_container.bind("<B1-Motion>", self._do_drag)
+        
+        # Logo image
+        self._logo_image = load_logo_image(24)  # Keep reference to prevent garbage collection
+        if self._logo_image:
+            logo_lbl = tk.Label(
+                title_container,
+                image=self._logo_image,
+                bg=Theme.BG_SECONDARY
+            )
+            logo_lbl.pack(side=tk.LEFT, padx=(0, 8))
+            logo_lbl.bind("<Button-1>", self._start_drag)
+            logo_lbl.bind("<B1-Motion>", self._do_drag)
+        
+        # Title
+        title_lbl = tk.Label(
+            title_container,
+            text="projects",
+            font=Theme.font(12, bold=True),
+            fg=Theme.FG_BRIGHT,
+            bg=Theme.BG_SECONDARY
+        )
+        title_lbl.pack(side=tk.LEFT)
+        title_lbl.bind("<Button-1>", self._start_drag)
+        title_lbl.bind("<B1-Motion>", self._do_drag)
+        
+        # Window controls
+        controls = tk.Frame(titlebar, bg=Theme.BG_SECONDARY)
+        controls.pack(side=tk.RIGHT, padx=8)
+        
+        # Minimize (hide to tray on Windows/Linux)
+        min_btn = tk.Label(
+            controls,
+            text="─",
+            font=Theme.font(10),
+            fg=Theme.FG_DIM,
+            bg=Theme.BG_SECONDARY,
+            padx=8,
+            cursor="hand2"
+        )
+        min_btn.pack(side=tk.LEFT)
+        min_btn.bind("<Enter>", lambda e: min_btn.config(fg=Theme.FG))
+        min_btn.bind("<Leave>", lambda e: min_btn.config(fg=Theme.FG_DIM))
+        min_btn.bind("<Button-1>", lambda e: self._on_close())
+        
+        # Close (quit app)
+        close_btn = tk.Label(
+            controls,
+            text="×",
+            font=Theme.font(14),
+            fg=Theme.FG_DIM,
+            bg=Theme.BG_SECONDARY,
+            padx=8,
+            cursor="hand2"
+        )
+        close_btn.pack(side=tk.LEFT)
+        close_btn.bind("<Enter>", lambda e: close_btn.config(fg=Theme.RED))
+        close_btn.bind("<Leave>", lambda e: close_btn.config(fg=Theme.FG_DIM))
+        close_btn.bind("<Button-1>", lambda e: self._quit_app())
+        
+        # Settings in titlebar
+        settings_btn = tk.Label(
+            titlebar,
+            text="settings",
+            font=Theme.font(10),
+            fg=Theme.FG_DIM,
+            bg=Theme.BG_SECONDARY,
+            cursor="hand2"
+        )
+        settings_btn.pack(side=tk.RIGHT, padx=16)
+        settings_btn.bind("<Enter>", lambda e: settings_btn.config(fg=Theme.ACCENT))
+        settings_btn.bind("<Leave>", lambda e: settings_btn.config(fg=Theme.FG_DIM))
+        settings_btn.bind("<Button-1>", lambda e: self._settings())
+    
+    def _build_native_header(self, inner):
+        """Build simple header for macOS with native titlebar."""
+        # Just a header bar with logo, title, and settings
+        header = tk.Frame(inner, bg=Theme.BG_SECONDARY, height=40)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
+        
+        # Logo + Title container
+        title_container = tk.Frame(header, bg=Theme.BG_SECONDARY)
+        title_container.pack(side=tk.LEFT, padx=12)
+        
+        # Logo image
+        self._logo_image = load_logo_image(24)  # Keep reference to prevent garbage collection
+        if self._logo_image:
+            logo_lbl = tk.Label(
+                title_container,
+                image=self._logo_image,
+                bg=Theme.BG_SECONDARY
+            )
+            logo_lbl.pack(side=tk.LEFT, padx=(0, 8))
+        
+        # Title
+        title_lbl = tk.Label(
+            title_container,
+            text="projects",
+            font=Theme.font(12, bold=True),
+            fg=Theme.FG_BRIGHT,
+            bg=Theme.BG_SECONDARY
+        )
+        title_lbl.pack(side=tk.LEFT)
+        
+        # Settings in header
+        settings_btn = tk.Label(
+            header,
+            text="settings",
+            font=Theme.font(10),
+            fg=Theme.FG_DIM,
+            bg=Theme.BG_SECONDARY,
+            cursor="hand2"
+        )
+        settings_btn.pack(side=tk.RIGHT, padx=16)
+        settings_btn.bind("<Enter>", lambda e: settings_btn.config(fg=Theme.ACCENT))
+        settings_btn.bind("<Leave>", lambda e: settings_btn.config(fg=Theme.FG_DIM))
+        settings_btn.bind("<Button-1>", lambda e: self._settings())
     
     def _start_drag(self, event):
         """Start window drag."""
