@@ -84,6 +84,7 @@ def build_windows():
         "--name=ProjectLauncher",
         "--onefile",
         "--windowed",
+        "--noupx",
         f"--icon={icon_path}",
         "--add-data", f"{root / 'config_manager.py'};.",
         "--add-data", f"{root / 'launchers.py'};.",
@@ -130,6 +131,7 @@ def build_macos():
         "--name=ProjectLauncher",
         "--onefile",
         "--windowed",
+        "--noupx",
     ]
     
     # Add icon if it exists
@@ -184,6 +186,7 @@ def build_linux():
         "--name=project-launcher",
         "--onefile",
         "--windowed",
+        "--noupx",
         "--add-data", f"{root / 'config_manager.py'}:.",
         "--add-data", f"{root / 'launchers.py'}:.",
         "--add-data", f"{root / 'startup_manager.py'}:.",

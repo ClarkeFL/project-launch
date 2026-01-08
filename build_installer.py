@@ -595,6 +595,7 @@ def build_installer_windows(root, temp_dir):
         f"--name={installer_name}",
         "--onefile",
         "--windowed",
+        "--noupx",
         f"--icon={icon_path}" if icon_path.exists() else "",
         "--add-data", f"{temp_dir / 'ProjectLauncher.exe'};.",
         "--add-data", f"{temp_dir / 'icon.ico'};." if (temp_dir / "icon.ico").exists() else "",
@@ -648,6 +649,7 @@ def build_installer_macos(root, temp_dir):
         sys.executable, "-m", "PyInstaller",
         f"--name={installer_name}",
         "--onefile",
+        "--noupx",
     ]
     
     if icns_path.exists():
@@ -763,6 +765,7 @@ def build_installer_linux(root, temp_dir):
         sys.executable, "-m", "PyInstaller",
         f"--name={installer_name}",
         "--onefile",
+        "--noupx",
         "--add-data", f"{temp_dir / 'project-launcher'}:.",
         "--add-data", f"{temp_dir / 'icon.png'}:." if (temp_dir / "icon.png").exists() else "",
         str(installer_script)
