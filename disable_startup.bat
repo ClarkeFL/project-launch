@@ -2,27 +2,9 @@
 :: ============================================================================
 :: Project Launcher - Disable Auto-Startup
 :: ============================================================================
-:: This script disables the auto-startup, removing both Task Scheduler and
-:: Registry entries.
-::
-:: REQUIREMENT: Must be run as Administrator to remove Task Scheduler entry
+:: This script disables the auto-startup Registry entry.
+:: No administrator privileges required.
 :: ============================================================================
-
-:: Check for admin privileges
-net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo ============================================================
-    echo   ERROR: Administrator privileges required
-    echo ============================================================
-    echo.
-    echo This script needs to run as Administrator to remove the
-    echo Task Scheduler entry.
-    echo.
-    echo Please right-click this file and select "Run as administrator"
-    echo.
-    pause
-    exit /b 1
-)
 
 echo ============================================================
 echo   Project Launcher - Disable Auto-Startup
@@ -76,6 +58,6 @@ echo ============================================================
 echo.
 echo Project Launcher will no longer start automatically.
 echo.
-echo To re-enable, run setup_startup.bat as Administrator.
+echo To re-enable, run setup_startup.bat.
 echo.
 pause

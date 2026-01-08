@@ -94,26 +94,18 @@ def get_start_menu_dir():
 
 
 def create_windows_shortcut(target_path, shortcut_path, description="", icon_path=None, working_dir=None):
-    """Create a Windows shortcut (.lnk file)."""
+    """Create a Windows shortcut (.lnk file) using COM."""
     try:
-        ps_script = f"""
-$WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
-$Shortcut.TargetPath = "{target_path}"
-$Shortcut.Description = "{description}"
-"""
+        import win32com.client
+        shell = win32com.client.Dispatch("WScript.Shell")
+        shortcut = shell.CreateShortCut(str(shortcut_path))
+        shortcut.TargetPath = str(target_path)
+        shortcut.Description = description
         if working_dir:
-            ps_script += f'$Shortcut.WorkingDirectory = "{working_dir}"\\n'
+            shortcut.WorkingDirectory = str(working_dir)
         if icon_path:
-            ps_script += f'$Shortcut.IconLocation = "{icon_path}"\\n'
-        
-        ps_script += '$Shortcut.Save()'
-        
-        subprocess.run(
-            ["powershell", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
-            capture_output=True,
-            check=True
-        )
+            shortcut.IconLocation = str(icon_path)
+        shortcut.Save()
         return True
     except Exception as e:
         print(f"Failed to create shortcut: {e}")
@@ -235,24 +227,20 @@ pause
     # Register in Windows Add/Remove Programs
     print("Registering in Add/Remove Programs...")
     icon_path = install_dir / "icon.ico"
-    reg_script = f"""
-$regPath = "HKCU:\\{reg_key}"
-New-Item -Path $regPath -Force | Out-Null
-Set-ItemProperty -Path $regPath -Name "DisplayName" -Value "Project Launcher"
-Set-ItemProperty -Path $regPath -Name "DisplayVersion" -Value "0.0.1"
-Set-ItemProperty -Path $regPath -Name "Publisher" -Value "Project Launcher"
-Set-ItemProperty -Path $regPath -Name "InstallLocation" -Value "{install_dir}"
-Set-ItemProperty -Path $regPath -Name "UninstallString" -Value "{uninstaller_path}"
-Set-ItemProperty -Path $regPath -Name "DisplayIcon" -Value "{icon_path if icon_path.exists() else dest_exe}"
-Set-ItemProperty -Path $regPath -Name "NoModify" -Value 1 -Type DWord
-Set-ItemProperty -Path $regPath -Name "NoRepair" -Value 1 -Type DWord
-"""
     try:
-        subprocess.run(
-            ["powershell", "-ExecutionPolicy", "Bypass", "-Command", reg_script],
-            capture_output=True,
-            check=True
-        )
+        import winreg
+        reg_key_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ProjectLauncher"
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, reg_key_path)
+        winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, "Project Launcher")
+        winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, "0.0.1")
+        winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, "Project Launcher")
+        winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(install_dir))
+        winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, str(uninstaller_path))
+        icon_loc = str(icon_path) if icon_path.exists() else str(dest_exe)
+        winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, icon_loc)
+        winreg.SetValueEx(key, "NoModify", 0, winreg.REG_DWORD, 1)
+        winreg.SetValueEx(key, "NoRepair", 0, winreg.REG_DWORD, 1)
+        winreg.CloseKey(key)
     except Exception as e:
         print(f"Note: Could not register in Add/Remove Programs: {{e}}")
     
@@ -610,7 +598,7 @@ def build_installer_windows(root, temp_dir):
         f"--icon={icon_path}" if icon_path.exists() else "",
         "--add-data", f"{temp_dir / 'ProjectLauncher.exe'};.",
         "--add-data", f"{temp_dir / 'icon.ico'};." if (temp_dir / "icon.ico").exists() else "",
-        "--uac-admin",
+
         str(installer_script)
     ]
     cmd = [c for c in cmd if c]

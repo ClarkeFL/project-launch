@@ -54,29 +54,18 @@ def get_source_exe():
 
 
 def create_shortcut(target_path, shortcut_path, description="", icon_path=None, working_dir=None):
-    """Create a Windows shortcut (.lnk file)."""
+    """Create a Windows shortcut (.lnk file) using COM."""
     try:
-        import winreg
-        
-        # Use PowerShell to create shortcut (most reliable method)
-        ps_script = f'''
-$WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
-$Shortcut.TargetPath = "{target_path}"
-$Shortcut.Description = "{description}"
-'''
+        import win32com.client
+        shell = win32com.client.Dispatch("WScript.Shell")
+        shortcut = shell.CreateShortCut(str(shortcut_path))
+        shortcut.TargetPath = str(target_path)
+        shortcut.Description = description
         if working_dir:
-            ps_script += f'$Shortcut.WorkingDirectory = "{working_dir}"\n'
+            shortcut.WorkingDirectory = str(working_dir)
         if icon_path:
-            ps_script += f'$Shortcut.IconLocation = "{icon_path}"\n'
-        
-        ps_script += '$Shortcut.Save()'
-        
-        subprocess.run(
-            ["powershell", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
-            capture_output=True,
-            check=True
-        )
+            shortcut.IconLocation = str(icon_path)
+        shortcut.Save()
         return True
     except Exception as e:
         print(f"[ERROR] Failed to create shortcut: {e}")

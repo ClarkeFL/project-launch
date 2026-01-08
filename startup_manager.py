@@ -1,14 +1,12 @@
 """
 Startup Manager for Project Launcher
 Handles cross-platform startup registration (Windows, macOS, Linux).
-Uses Task Scheduler on Windows for fast startup (5-15s instead of 2-3min).
+Uses Registry on Windows (no admin required).
 """
 
 import os
 import sys
 import platform
-import subprocess
-import tempfile
 from pathlib import Path
 
 
@@ -28,16 +26,15 @@ def get_python_executable() -> str:
 
 
 # =============================================================================
-# Windows Startup (Task Scheduler for fast startup, Registry as fallback)
+# Windows Startup (Registry - no admin required)
 # =============================================================================
 
-TASK_NAME = "ProjectLauncher"
 REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 REGISTRY_VALUE_NAME = "ProjectLauncher"
 
 
 def _get_windows_startup_folder() -> Path:
-    """Get Windows startup folder path (legacy, for cleanup)."""
+    """Get Windows startup folder path (for cleanup)."""
     startup = os.environ.get("APPDATA", "")
     if startup:
         return Path(startup) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
@@ -45,7 +42,9 @@ def _get_windows_startup_folder() -> Path:
 
 
 def _cleanup_legacy_startup() -> None:
-    """Remove old startup methods (VBS files, Registry entries)."""
+    """Remove old startup methods (VBS files, Task Scheduler, etc.)."""
+    import subprocess
+    
     # Remove old VBS from Startup folder
     try:
         vbs_path = _get_windows_startup_folder() / "ProjectLauncher.vbs"
@@ -63,134 +62,25 @@ def _cleanup_legacy_startup() -> None:
                 old_path.unlink()
     except Exception:
         pass
-
-
-def _get_username_for_task() -> str:
-    """Get the username in the format needed for Task Scheduler."""
-    username = os.environ.get("USERNAME", "")
-    userdomain = os.environ.get("USERDOMAIN", "")
     
-    if userdomain and username:
-        return f"{userdomain}\\{username}"
-    return username
-
-
-def _create_task_xml(exe_path: str, args: str, working_dir: str) -> str:
-    """Create Task Scheduler XML definition."""
-    username = _get_username_for_task()
-    
-    return f'''<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>Project Launcher - Fast startup at logon</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <LogonTrigger>
-      <Enabled>true</Enabled>
-      <Delay>PT5S</Delay>
-      <UserId>{username}</UserId>
-    </LogonTrigger>
-  </Triggers>
-  <Principals>
-    <Principal id="Author">
-      <UserId>{username}</UserId>
-      <LogonType>InteractiveToken</LogonType>
-      <RunLevel>LeastPrivilege</RunLevel>
-    </Principal>
-  </Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <AllowHardTerminate>true</AllowHardTerminate>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
-    <IdleSettings>
-      <StopOnIdleEnd>false</StopOnIdleEnd>
-      <RestartOnIdle>false</RestartOnIdle>
-    </IdleSettings>
-    <AllowStartOnDemand>true</AllowStartOnDemand>
-    <Enabled>true</Enabled>
-    <Hidden>false</Hidden>
-    <RunOnlyIfIdle>false</RunOnlyIfIdle>
-    <WakeToRun>false</WakeToRun>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <Priority>4</Priority>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>{exe_path}</Command>
-      <Arguments>{args}</Arguments>
-      <WorkingDirectory>{working_dir}</WorkingDirectory>
-    </Exec>
-  </Actions>
-</Task>
-'''
-
-
-def _try_task_scheduler_startup() -> bool:
-    """Try to create startup using Task Scheduler (requires admin)."""
+    # Remove any existing Task Scheduler entry (best effort, may fail without admin)
     try:
-        script_path = get_script_path()
-        python_exe = get_python_executable()
-        working_dir = script_path.parent
-        
-        # Use pythonw.exe (no console window) if available
-        pythonw_exe = python_exe.replace("python.exe", "pythonw.exe")
-        if not Path(pythonw_exe).exists():
-            pythonw_exe = python_exe
-        
-        # Create the XML task definition
-        xml_content = _create_task_xml(
-            exe_path=pythonw_exe,
-            args=f'"{script_path}" --auto',
-            working_dir=str(working_dir)
+        subprocess.run(
+            ["schtasks", "/delete", "/tn", "ProjectLauncher", "/f"],
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
-        
-        # Write XML to temp file (must be UTF-16 for schtasks)
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False, encoding='utf-16') as f:
-            f.write(xml_content)
-            xml_path = f.name
-        
-        try:
-            # Delete existing task if it exists
-            subprocess.run(
-                ["schtasks", "/delete", "/tn", TASK_NAME, "/f"],
-                capture_output=True,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
-            
-            # Create the task from XML
-            result = subprocess.run(
-                ["schtasks", "/create", "/tn", TASK_NAME, "/xml", xml_path, "/f"],
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
-            
-            if result.returncode == 0:
-                return True
-            else:
-                return False
-        finally:
-            # Clean up temp file
-            try:
-                os.unlink(xml_path)
-            except Exception:
-                pass
-                
-    except Exception as e:
-        return False
+    except Exception:
+        pass
 
 
-def _try_registry_startup() -> bool:
-    """Fallback: Create startup using Registry Run key (no admin required, but slower)."""
+def _enable_registry_startup() -> bool:
+    """Create startup using Registry Run key (no admin required)."""
     try:
         import winreg
         
         script_path = get_script_path()
         python_exe = get_python_executable()
-        working_dir = script_path.parent
         
         # Use pythonw.exe (no console window) if available
         pythonw_exe = python_exe.replace("python.exe", "pythonw.exe")
@@ -214,19 +104,6 @@ def _try_registry_startup() -> bool:
         return True
     except Exception as e:
         print(f"Registry startup setup failed: {e}")
-        return False
-
-
-def _is_task_scheduler_enabled() -> bool:
-    """Check if Task Scheduler startup is enabled."""
-    try:
-        result = subprocess.run(
-            ["schtasks", "/query", "/tn", TASK_NAME],
-            capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
-        return result.returncode == 0
-    except Exception:
         return False
 
 
@@ -273,33 +150,16 @@ def _remove_registry_startup() -> None:
 
 
 def _enable_windows_startup() -> bool:
-    """Enable startup on Windows using Task Scheduler (fast) with Registry fallback."""
+    """Enable startup on Windows using Registry."""
     # Clean up any legacy startup methods
     _cleanup_legacy_startup()
     
-    # Try Task Scheduler first (requires admin, but much faster startup)
-    if _try_task_scheduler_startup():
-        # Remove Registry entry if Task Scheduler succeeded (avoid duplicate startups)
-        _remove_registry_startup()
-        return True
-    
-    # Fallback to Registry (slower 2-3min startup, but works without admin)
-    print("Note: For faster startup, run setup_startup.bat as Administrator")
-    return _try_registry_startup()
+    # Use Registry (works without admin)
+    return _enable_registry_startup()
 
 
 def _disable_windows_startup() -> bool:
     """Disable startup on Windows."""
-    # Remove Task Scheduler task
-    try:
-        subprocess.run(
-            ["schtasks", "/delete", "/tn", TASK_NAME, "/f"],
-            capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
-    except Exception:
-        pass
-    
     # Remove Registry entry
     _remove_registry_startup()
     
@@ -310,16 +170,14 @@ def _disable_windows_startup() -> bool:
 
 
 def _is_windows_startup_enabled() -> bool:
-    """Check if Windows startup is enabled (either method)."""
-    return _is_task_scheduler_enabled() or _is_registry_enabled()
+    """Check if Windows startup is enabled."""
+    return _is_registry_enabled()
 
 
 def _get_windows_startup_method() -> str:
     """Get which startup method is currently active."""
-    if _is_task_scheduler_enabled():
-        return "Task Scheduler (fast)"
-    elif _is_registry_enabled():
-        return "Registry (slower - run setup_startup.bat as Admin for faster startup)"
+    if _is_registry_enabled():
+        return "Registry (Windows Startup)"
     return "None"
 
 
@@ -335,6 +193,8 @@ def _get_macos_launch_agent_path() -> Path:
 def _enable_macos_startup() -> bool:
     """Enable startup on macOS using LaunchAgent."""
     try:
+        import subprocess
+        
         launch_agents_dir = Path.home() / "Library" / "LaunchAgents"
         launch_agents_dir.mkdir(parents=True, exist_ok=True)
         
@@ -385,6 +245,8 @@ def _enable_macos_startup() -> bool:
 def _disable_macos_startup() -> bool:
     """Disable startup on macOS."""
     try:
+        import subprocess
+        
         plist_path = _get_macos_launch_agent_path()
         
         if plist_path.exists():
