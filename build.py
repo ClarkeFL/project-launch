@@ -313,8 +313,8 @@ def main():
         print("BUILD SUCCESSFUL!")
         print("=" * 60)
         print(f"\nOutput: {result}")
-        print("\nYou can distribute this file to users.")
-        print("They can run it without installing Python!")
+        print("\nThe executable is portable and self-installing.")
+        print("Users can run it directly - it will offer to install itself.")
     else:
         print("\n[ERROR] Build failed!")
         sys.exit(1)

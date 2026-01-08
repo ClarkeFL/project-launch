@@ -1,12 +1,13 @@
 """
 Startup Manager for Project Launcher
-Handles cross-platform startup registration (Windows, macOS, Linux).
-Uses Registry on Windows (no admin required).
+Handles cross-platform startup registration and shortcut creation.
+Uses Startup Folder on Windows (no registry, no admin required).
 """
 
 import os
 import sys
 import platform
+import shutil
 from pathlib import Path
 
 
@@ -15,36 +16,129 @@ def get_platform() -> str:
     return platform.system()
 
 
-def get_script_path() -> Path:
-    """Get the path to the main launcher script."""
-    return Path(__file__).parent / "project_launcher.py"
+def get_executable_path() -> Path:
+    """Get the path to the running executable or script."""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable
+        return Path(sys.executable)
+    else:
+        # Running as script
+        return Path(__file__).parent / "project_launcher.py"
 
 
-def get_python_executable() -> str:
-    """Get the Python executable path."""
-    return sys.executable
+def get_install_dir() -> Path:
+    """Get the installation directory."""
+    if get_platform() == "Windows":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "ProjectLauncher"
+    elif get_platform() == "Darwin":
+        return Path.home() / "Applications" / "ProjectLauncher"
+    else:  # Linux
+        return Path.home() / ".local" / "share" / "ProjectLauncher"
+
+
+def is_installed() -> bool:
+    """Check if the application is running from the installed location."""
+    exe_path = get_executable_path()
+    install_dir = get_install_dir()
+    
+    try:
+        # Check if current exe is inside the install directory
+        exe_path.relative_to(install_dir)
+        return True
+    except ValueError:
+        return False
+
+
+def get_installed_exe_path() -> Path:
+    """Get the path where the exe should be installed."""
+    install_dir = get_install_dir()
+    if get_platform() == "Windows":
+        return install_dir / "ProjectLauncher.exe"
+    elif get_platform() == "Darwin":
+        return install_dir / "ProjectLauncher"
+    else:  # Linux
+        return install_dir / "project-launcher"
 
 
 # =============================================================================
-# Windows Startup (Registry - no admin required)
+# Windows Shortcuts (using win32com or PowerShell fallback)
 # =============================================================================
-
-REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-REGISTRY_VALUE_NAME = "ProjectLauncher"
-
 
 def _get_windows_startup_folder() -> Path:
-    """Get Windows startup folder path (for cleanup)."""
+    """Get Windows startup folder path."""
     startup = os.environ.get("APPDATA", "")
     if startup:
         return Path(startup) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
     return Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
 
 
-def _cleanup_legacy_startup() -> None:
-    """Remove old startup methods (VBS files, Task Scheduler, etc.)."""
-    import subprocess
-    
+def _get_windows_desktop_folder() -> Path:
+    """Get Windows desktop folder path."""
+    return Path.home() / "Desktop"
+
+
+def _get_windows_start_menu_folder() -> Path:
+    """Get Windows Start Menu programs folder path."""
+    appdata = os.environ.get("APPDATA", "")
+    if appdata:
+        return Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+    return Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+
+
+def _create_windows_shortcut(shortcut_path: Path, target_path: Path, description: str = "", icon_path: Path | None = None) -> bool:
+    """Create a Windows .lnk shortcut file."""
+    try:
+        # Try using win32com first (most reliable)
+        try:
+            import win32com.client
+            shell = win32com.client.Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortCut(str(shortcut_path))
+            shortcut.TargetPath = str(target_path)
+            shortcut.WorkingDirectory = str(target_path.parent)
+            shortcut.Description = description
+            if icon_path and icon_path.exists():
+                shortcut.IconLocation = str(icon_path)
+            shortcut.save()
+            return True
+        except ImportError:
+            pass
+        
+        # Fallback: Use PowerShell to create shortcut
+        import subprocess
+        
+        ps_script = f'''
+$WshShell = New-Object -comObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
+$Shortcut.TargetPath = "{target_path}"
+$Shortcut.WorkingDirectory = "{target_path.parent}"
+$Shortcut.Description = "{description}"
+$Shortcut.Save()
+'''
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+        )
+        return result.returncode == 0
+        
+    except Exception as e:
+        print(f"Error creating shortcut: {e}")
+        return False
+
+
+def _remove_windows_shortcut(shortcut_path: Path) -> bool:
+    """Remove a Windows shortcut file."""
+    try:
+        if shortcut_path.exists():
+            shortcut_path.unlink()
+        return True
+    except Exception as e:
+        print(f"Error removing shortcut: {e}")
+        return False
+
+
+def _cleanup_legacy_windows_startup() -> None:
+    """Remove old startup methods (Registry, VBS files, Task Scheduler)."""
     # Remove old VBS from Startup folder
     try:
         vbs_path = _get_windows_startup_folder() / "ProjectLauncher.vbs"
@@ -53,132 +147,234 @@ def _cleanup_legacy_startup() -> None:
     except Exception:
         pass
     
-    # Remove old batch/vbs files from project directory
-    try:
-        working_dir = get_script_path().parent
-        for old_file in ["startup_task.bat", "startup_silent.vbs"]:
-            old_path = working_dir / old_file
-            if old_path.exists():
-                old_path.unlink()
-    except Exception:
-        pass
-    
-    # Remove any existing Task Scheduler entry (best effort, may fail without admin)
-    try:
-        subprocess.run(
-            ["schtasks", "/delete", "/tn", "ProjectLauncher", "/f"],
-            capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
-    except Exception:
-        pass
-
-
-def _enable_registry_startup() -> bool:
-    """Create startup using Registry Run key (no admin required)."""
-    try:
-        import winreg
-        
-        script_path = get_script_path()
-        python_exe = get_python_executable()
-        
-        # Use pythonw.exe (no console window) if available
-        pythonw_exe = python_exe.replace("python.exe", "pythonw.exe")
-        if not Path(pythonw_exe).exists():
-            pythonw_exe = python_exe
-        
-        # Create startup command - run Python directly
-        startup_command = f'"{pythonw_exe}" "{script_path}" --auto'
-        
-        # Add to registry
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            REGISTRY_KEY,
-            0,
-            winreg.KEY_SET_VALUE
-        )
-        
-        winreg.SetValueEx(key, REGISTRY_VALUE_NAME, 0, winreg.REG_SZ, startup_command)
-        winreg.CloseKey(key)
-        
-        return True
-    except Exception as e:
-        print(f"Registry startup setup failed: {e}")
-        return False
-
-
-def _is_registry_enabled() -> bool:
-    """Check if Registry startup is enabled."""
-    try:
-        import winreg
-        
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            REGISTRY_KEY,
-            0,
-            winreg.KEY_READ
-        )
-        
-        try:
-            winreg.QueryValueEx(key, REGISTRY_VALUE_NAME)
-            winreg.CloseKey(key)
-            return True
-        except FileNotFoundError:
-            winreg.CloseKey(key)
-            return False
-    except Exception:
-        return False
-
-
-def _remove_registry_startup() -> None:
-    """Remove Registry startup entry."""
+    # Remove Registry entry if exists
     try:
         import winreg
         key = winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
-            REGISTRY_KEY,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
             0,
             winreg.KEY_SET_VALUE
         )
         try:
-            winreg.DeleteValue(key, REGISTRY_VALUE_NAME)
+            winreg.DeleteValue(key, "ProjectLauncher")
         except FileNotFoundError:
             pass
         winreg.CloseKey(key)
     except Exception:
         pass
+    
+    # Remove Task Scheduler entry (best effort)
+    try:
+        import subprocess
+        subprocess.run(
+            ["schtasks", "/delete", "/tn", "ProjectLauncher", "/f"],
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+        )
+    except Exception:
+        pass
 
+
+# =============================================================================
+# Windows Startup (Startup Folder - no registry, no admin)
+# =============================================================================
 
 def _enable_windows_startup() -> bool:
-    """Enable startup on Windows using Registry."""
-    # Clean up any legacy startup methods
-    _cleanup_legacy_startup()
+    """Enable startup on Windows using Startup Folder shortcut."""
+    # Clean up any legacy startup methods first
+    _cleanup_legacy_windows_startup()
     
-    # Use Registry (works without admin)
-    return _enable_registry_startup()
+    exe_path = get_executable_path()
+    if not exe_path.exists():
+        return False
+    
+    startup_folder = _get_windows_startup_folder()
+    startup_folder.mkdir(parents=True, exist_ok=True)
+    
+    shortcut_path = startup_folder / "ProjectLauncher.lnk"
+    return _create_windows_shortcut(shortcut_path, exe_path, "Project Launcher - Launch your projects")
 
 
 def _disable_windows_startup() -> bool:
     """Disable startup on Windows."""
-    # Remove Registry entry
-    _remove_registry_startup()
+    # Clean up legacy methods
+    _cleanup_legacy_windows_startup()
     
-    # Clean up legacy files
-    _cleanup_legacy_startup()
-    
-    return True
+    # Remove startup folder shortcut
+    shortcut_path = _get_windows_startup_folder() / "ProjectLauncher.lnk"
+    return _remove_windows_shortcut(shortcut_path)
 
 
 def _is_windows_startup_enabled() -> bool:
-    """Check if Windows startup is enabled."""
-    return _is_registry_enabled()
+    """Check if Windows startup is enabled (shortcut exists in Startup folder)."""
+    shortcut_path = _get_windows_startup_folder() / "ProjectLauncher.lnk"
+    return shortcut_path.exists()
 
 
-def _get_windows_startup_method() -> str:
-    """Get which startup method is currently active."""
-    if _is_registry_enabled():
-        return "Registry (Windows Startup)"
-    return "None"
+# =============================================================================
+# Windows Desktop & Start Menu Shortcuts
+# =============================================================================
+
+def create_desktop_shortcut() -> bool:
+    """Create a desktop shortcut (Windows only for now)."""
+    if get_platform() != "Windows":
+        return False
+    
+    exe_path = get_executable_path()
+    if not exe_path.exists():
+        return False
+    
+    desktop = _get_windows_desktop_folder()
+    shortcut_path = desktop / "Project Launcher.lnk"
+    return _create_windows_shortcut(shortcut_path, exe_path, "Project Launcher")
+
+
+def remove_desktop_shortcut() -> bool:
+    """Remove desktop shortcut."""
+    if get_platform() != "Windows":
+        return False
+    
+    shortcut_path = _get_windows_desktop_folder() / "Project Launcher.lnk"
+    return _remove_windows_shortcut(shortcut_path)
+
+
+def has_desktop_shortcut() -> bool:
+    """Check if desktop shortcut exists."""
+    if get_platform() != "Windows":
+        return False
+    
+    shortcut_path = _get_windows_desktop_folder() / "Project Launcher.lnk"
+    return shortcut_path.exists()
+
+
+def create_start_menu_shortcut() -> bool:
+    """Create a Start Menu shortcut (Windows only for now)."""
+    if get_platform() != "Windows":
+        return False
+    
+    exe_path = get_executable_path()
+    if not exe_path.exists():
+        return False
+    
+    start_menu = _get_windows_start_menu_folder()
+    start_menu.mkdir(parents=True, exist_ok=True)
+    
+    shortcut_path = start_menu / "Project Launcher.lnk"
+    return _create_windows_shortcut(shortcut_path, exe_path, "Project Launcher")
+
+
+def remove_start_menu_shortcut() -> bool:
+    """Remove Start Menu shortcut."""
+    if get_platform() != "Windows":
+        return False
+    
+    shortcut_path = _get_windows_start_menu_folder() / "Project Launcher.lnk"
+    return _remove_windows_shortcut(shortcut_path)
+
+
+def has_start_menu_shortcut() -> bool:
+    """Check if Start Menu shortcut exists."""
+    if get_platform() != "Windows":
+        return False
+    
+    shortcut_path = _get_windows_start_menu_folder() / "Project Launcher.lnk"
+    return shortcut_path.exists()
+
+
+# =============================================================================
+# Installation Functions
+# =============================================================================
+
+def install_application(create_desktop: bool = True, create_start_menu: bool = True, create_startup: bool = True) -> dict:
+    """
+    Install the application to the standard location.
+    
+    Returns dict with:
+        - success: bool
+        - install_path: str (path where installed)
+        - error: str (if failed)
+    """
+    result = {"success": False, "install_path": "", "error": ""}
+    
+    try:
+        current_exe = get_executable_path()
+        install_dir = get_install_dir()
+        target_exe = get_installed_exe_path()
+        
+        # Check if already installed at target location
+        if is_installed():
+            result["success"] = True
+            result["install_path"] = str(target_exe)
+            
+            # Still create shortcuts if requested
+            if create_desktop:
+                create_desktop_shortcut()
+            if create_start_menu:
+                create_start_menu_shortcut()
+            if create_startup:
+                set_startup_enabled(True)
+            
+            return result
+        
+        # Create install directory
+        install_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy executable to install location
+        shutil.copy2(current_exe, target_exe)
+        
+        # Make executable on Unix
+        if get_platform() != "Windows":
+            os.chmod(target_exe, 0o755)
+        
+        # Copy assets if they exist (for icons)
+        current_dir = current_exe.parent
+        assets_dir = current_dir / "assets"
+        if assets_dir.exists():
+            target_assets = install_dir / "assets"
+            if target_assets.exists():
+                shutil.rmtree(target_assets)
+            shutil.copytree(assets_dir, target_assets)
+        
+        result["success"] = True
+        result["install_path"] = str(target_exe)
+        
+        # Create shortcuts
+        if create_desktop:
+            create_desktop_shortcut()
+        if create_start_menu:
+            create_start_menu_shortcut()
+        if create_startup:
+            set_startup_enabled(True)
+        
+    except Exception as e:
+        result["error"] = str(e)
+    
+    return result
+
+
+def uninstall_application() -> dict:
+    """
+    Uninstall the application.
+    
+    Returns dict with:
+        - success: bool
+        - error: str (if failed)
+    """
+    result = {"success": False, "error": ""}
+    
+    try:
+        # Remove all shortcuts
+        remove_desktop_shortcut()
+        remove_start_menu_shortcut()
+        set_startup_enabled(False)
+        
+        result["success"] = True
+        
+    except Exception as e:
+        result["error"] = str(e)
+    
+    return result
 
 
 # =============================================================================
@@ -198,9 +394,8 @@ def _enable_macos_startup() -> bool:
         launch_agents_dir = Path.home() / "Library" / "LaunchAgents"
         launch_agents_dir.mkdir(parents=True, exist_ok=True)
         
-        script_path = get_script_path()
-        python_exe = get_python_executable()
-        working_dir = script_path.parent
+        exe_path = get_executable_path()
+        working_dir = exe_path.parent
         
         # Create LaunchAgent plist
         plist_content = f'''<?xml version="1.0" encoding="UTF-8"?>
@@ -211,8 +406,7 @@ def _enable_macos_startup() -> bool:
     <string>com.projectlauncher</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{python_exe}</string>
-        <string>{script_path}</string>
+        <string>{exe_path}</string>
         <string>--auto</string>
     </array>
     <key>WorkingDirectory</key>
@@ -286,16 +480,15 @@ def _enable_linux_startup() -> bool:
         autostart_dir = _get_linux_autostart_path().parent
         autostart_dir.mkdir(parents=True, exist_ok=True)
         
-        script_path = get_script_path()
-        python_exe = get_python_executable()
-        working_dir = script_path.parent
+        exe_path = get_executable_path()
+        working_dir = exe_path.parent
         
         # Create .desktop file
         desktop_content = f'''[Desktop Entry]
 Type=Application
 Name=Project Launcher
 Comment=Launch development projects
-Exec="{python_exe}" "{script_path}" --auto
+Exec="{exe_path}" --auto
 Path={working_dir}
 Hidden=false
 NoDisplay=false
@@ -393,7 +586,7 @@ def get_startup_location() -> str:
     system = get_platform()
     
     if system == "Windows":
-        return _get_windows_startup_method()
+        return str(_get_windows_startup_folder() / "ProjectLauncher.lnk")
     elif system == "Darwin":
         return str(_get_macos_launch_agent_path())
     else:  # Linux
@@ -406,18 +599,10 @@ def get_startup_location() -> str:
 
 if __name__ == "__main__":
     print(f"Platform: {get_platform()}")
-    print(f"Script path: {get_script_path()}")
-    print(f"Python executable: {get_python_executable()}")
+    print(f"Executable path: {get_executable_path()}")
+    print(f"Install directory: {get_install_dir()}")
+    print(f"Is installed: {is_installed()}")
     print(f"Startup enabled: {is_startup_enabled()}")
-    print(f"Startup method: {get_startup_location()}")
-    
-    # Test enabling/disabling
-    print("\nTesting startup registration...")
-    if not is_startup_enabled():
-        print("Enabling startup...")
-        set_startup_enabled(True)
-        print(f"Startup enabled: {is_startup_enabled()}")
-        print(f"Method: {get_startup_location()}")
-    else:
-        print("Startup already enabled.")
-        print(f"Method: {get_startup_location()}")
+    print(f"Startup location: {get_startup_location()}")
+    print(f"Desktop shortcut: {has_desktop_shortcut()}")
+    print(f"Start Menu shortcut: {has_start_menu_shortcut()}")

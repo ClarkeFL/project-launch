@@ -14,29 +14,39 @@ A desktop application that helps developers quickly launch their development pro
 - **Terminal Commands** - Run custom commands on project launch
 - **Multi-browser Support** - Chrome, Firefox, Edge, Safari, Brave, Arc
 - **System Tray** - Runs minimized in the system tray
-- **Auto-start** - Launches automatically on login
+- **Auto-start** - Optionally launches automatically on login
 - **Cross-platform** - Works on Windows, macOS, and Linux
+- **Portable** - Can run without installing, or install with one click
 
 ## Installation
 
-Download the latest installer for your platform from the [Releases](https://github.com/ClarkeFL/project-launch/releases) page:
+Download the latest release for your platform from the [Releases](https://github.com/ClarkeFL/project-launch/releases) page:
 
 | Platform | File | Instructions |
 |----------|------|--------------|
-| **Windows** | `ProjectLauncher-Setup-Windows.exe` | Double-click to install |
-| **macOS** | `ProjectLauncher-Installer-macOS` | `chmod +x` then run |
-| **Linux** | `project-launcher-installer-Linux` | `chmod +x` then run |
+| **Windows** | `ProjectLauncher-Windows-vX.X.X.exe` | Download and run |
+| **macOS** | `ProjectLauncher-macOS-vX.X.X` | Download, `chmod +x`, and run |
+| **Linux** | `project-launcher-Linux-vX.X.X` | Download, `chmod +x`, and run |
 
-### What the installer does
+### First Run
 
-- Installs the application
-- Creates desktop/menu shortcuts
-- Sets up auto-start on login
-- Registers uninstaller (Windows: Add/Remove Programs)
+When you run the application for the first time, you'll be prompted to:
+
+1. **Install** - Copies the app to a standard location (`%LOCALAPPDATA%\ProjectLauncher` on Windows) and creates shortcuts
+2. **Run Portable** - Run directly from wherever you downloaded it
+
+Both options work well - installing just makes it easier to find and launch the app.
+
+### What Installing Does
+
+- Copies the executable to your user's app folder (no admin required)
+- Optionally creates Desktop shortcut
+- Optionally creates Start Menu shortcut
+- Optionally enables auto-start on login
 
 ### Security Warnings
 
-Since the app is not code-signed, you may see security warnings. This is normal for open-source software distributed outside app stores.
+Since the app is not code-signed, you may see security warnings. This is normal for open-source software.
 
 <details>
 <summary><strong>Windows - "Windows protected your PC"</strong></summary>
@@ -61,7 +71,7 @@ This warning appears because the app isn't signed with an expensive code signing
 
 **Option 3: Terminal**
 ```bash
-xattr -cr ~/Applications/Project\ Launcher.app
+xattr -cr ./ProjectLauncher-macOS-*
 ```
 </details>
 
@@ -70,8 +80,8 @@ xattr -cr ~/Applications/Project\ Launcher.app
 
 Linux generally doesn't show security warnings. Just make sure the file is executable:
 ```bash
-chmod +x ./project-launcher-installer-Linux
-./project-launcher-installer-Linux
+chmod +x ./project-launcher-Linux-*
+./project-launcher-Linux-*
 ```
 </details>
 
@@ -84,17 +94,25 @@ chmod +x ./project-launcher-installer-Linux
    - **Name** - Display name for the project
    - **Path** - Root directory of your project
    - **IDE** - Which editor to open
-   - **AI Tool** - Optional AI coding assistant
-   - **Terminal Command** - Optional command to run (e.g., `npm run dev`)
+   - **AI Tools** - Optional AI coding assistants
+   - **Terminal Commands** - Commands to run (e.g., `npm run dev`)
    - **Browser URLs** - URLs to open (e.g., `http://localhost:3000`)
 
 ### Launching a Project
 
-Click the **"Launch"** button on any project card. This will:
+Click the **"run"** button on any project card. This will:
 1. Open the project in your selected IDE
-2. Start the AI coding tool (if configured)
-3. Run the terminal command (if configured)
+2. Start the AI coding tool(s) (if configured)
+3. Run the terminal command(s) (if configured)
 4. Open browser tabs (if configured)
+
+### Settings
+
+Access settings from the title bar. From here you can:
+- Enable/disable "Start with Windows"
+- Create/remove Desktop shortcut
+- Create/remove Start Menu shortcut
+- Uninstall (removes all shortcuts)
 
 ### Configuration
 
@@ -108,19 +126,26 @@ Example configuration:
 projects:
   - name: My Web App
     path: /path/to/project
-    ide: cursor
-    ai_tool: opencode
-    terminal_command: npm run dev
-    browser_urls:
-      - http://localhost:3000
-      - http://localhost:3000/admin
-    browser: chrome
+    actions:
+      - type: ide
+        ide: cursor
+      - type: ai_tool
+        tool: opencode
+      - type: terminal
+        commands:
+          - npm run dev
+      - type: browser
+        browsers:
+          - chrome
+        tabs:
+          - http://localhost:3000
+          - http://localhost:3000/admin
 ```
 
 ## Supported Tools
 
 ### IDEs
-- VS Code (`code`)
+- VS Code (`vscode`)
 - Cursor (`cursor`)
 - Zed (`zed`)
 - Windsurf (`windsurf`)
@@ -165,26 +190,34 @@ python project_launcher.py
 ### Building
 
 ```bash
-# Build the standalone app
+# Build the standalone executable
 python build.py
 
-# Build the installer
-python build_installer.py
+# Build with clean (removes previous builds first)
+python build.py --clean
 ```
+
+The built executable will be in the `dist/` folder.
 
 ## Uninstalling
 
-### Windows
-- **Settings > Apps > Project Launcher > Uninstall**, or
-- **Start Menu > Project Launcher > Uninstall Project Launcher**
+### From the App
+1. Open Settings (click "settings" in the title bar)
+2. Click "Uninstall..." at the bottom
+3. This removes all shortcuts
 
-### macOS
-- Run `~/Applications/ProjectLauncher/uninstall.sh`, or
-- Find "Uninstall Project Launcher" in Applications
+To fully remove the app, delete the installation folder:
+- **Windows:** `%LOCALAPPDATA%\ProjectLauncher`
+- **macOS:** `~/Applications/ProjectLauncher`
+- **Linux:** `~/.local/share/ProjectLauncher`
 
-### Linux
-- Find "Uninstall Project Launcher" in your application menu, or
-- Run `~/.local/share/ProjectLauncher/uninstall.sh`
+### Manual Cleanup
+
+Config files are stored separately and won't be removed by uninstall:
+- **Windows:** `%LOCALAPPDATA%\ProjectLauncher\config.yaml`
+- **macOS/Linux:** `~/.config/ProjectLauncher/config.yaml`
+
+Delete these manually if you want to remove all traces.
 
 ## License
 

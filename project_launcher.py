@@ -86,6 +86,13 @@ from launchers import execute_project_actions
 log("launchers imported")
 from update_checker import check_for_updates_async, open_download_page, get_current_version
 log("update_checker imported")
+from startup_manager import (
+    is_installed, get_install_dir, get_installed_exe_path, install_application,
+    uninstall_application, set_startup_enabled, is_startup_enabled,
+    has_desktop_shortcut, has_start_menu_shortcut, create_desktop_shortcut,
+    create_start_menu_shortcut, remove_desktop_shortcut, remove_start_menu_shortcut
+)
+log("startup_manager imported")
 
 
 # =============================================================================
@@ -1319,11 +1326,12 @@ class ProjectDialog(BaseDialog):
 
 
 class SettingsDialog(BaseDialog):
-    """Settings dialog."""
+    """Settings dialog with startup and uninstall options."""
     
     def __init__(self, parent, config):
-        super().__init__(parent, "settings", width=380, height=200)
+        super().__init__(parent, "settings", width=420, height=320)
         self.config = config.copy()
+        self._needs_restart = False
         
         self._create()
         self._center()
@@ -1332,37 +1340,198 @@ class SettingsDialog(BaseDialog):
         main = tk.Frame(self.content, bg=Theme.BG, padx=20, pady=16)
         main.pack(fill=tk.BOTH, expand=True)
         
-        # Startup
+        # Section: Startup
+        tk.Label(main, text="Startup", font=Theme.font(10, bold=True), fg=Theme.FG_BRIGHT, bg=Theme.BG).pack(anchor="w", pady=(0, 8))
+        
+        # Start with Windows checkbox
         row1 = tk.Frame(main, bg=Theme.BG)
         row1.pack(fill=tk.X, pady=4)
-        self.startup_var = tk.BooleanVar(value=self.config.get("settings", {}).get("show_on_startup", False))
+        self.startup_var = tk.BooleanVar(value=is_startup_enabled())
         tk.Checkbutton(row1, variable=self.startup_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
-        tk.Label(row1, text="launch on startup", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
+        tk.Label(row1, text="Start with Windows", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
         
-        # Tip about fast startup
-        tk.Label(main, text="Tip: Run setup_startup.bat as Admin for faster startup", 
-                 font=Theme.font(8), fg=Theme.FG_DIM, bg=Theme.BG).pack(anchor="w", pady=(4, 0))
+        # Section: Shortcuts
+        tk.Label(main, text="Shortcuts", font=Theme.font(10, bold=True), fg=Theme.FG_BRIGHT, bg=Theme.BG).pack(anchor="w", pady=(16, 8))
+        
+        # Desktop shortcut
+        row2 = tk.Frame(main, bg=Theme.BG)
+        row2.pack(fill=tk.X, pady=4)
+        self.desktop_var = tk.BooleanVar(value=has_desktop_shortcut())
+        tk.Checkbutton(row2, variable=self.desktop_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
+        tk.Label(row2, text="Desktop shortcut", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
+        
+        # Start Menu shortcut
+        row3 = tk.Frame(main, bg=Theme.BG)
+        row3.pack(fill=tk.X, pady=4)
+        self.startmenu_var = tk.BooleanVar(value=has_start_menu_shortcut())
+        tk.Checkbutton(row3, variable=self.startmenu_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
+        tk.Label(row3, text="Start Menu shortcut", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
+        
+        # Section: Info
+        tk.Label(main, text="Info", font=Theme.font(10, bold=True), fg=Theme.FG_BRIGHT, bg=Theme.BG).pack(anchor="w", pady=(16, 8))
+        
+        # Install location
+        install_dir = get_install_dir()
+        if is_installed():
+            location_text = f"Installed: {install_dir}"
+        else:
+            location_text = f"Running portable (not installed)"
+        tk.Label(main, text=location_text, font=Theme.font(8), fg=Theme.FG_DIM, bg=Theme.BG, wraplength=360, justify="left").pack(anchor="w")
         
         # Config path
-        tk.Label(main, text=f"config: {get_config_dir()}", font=Theme.font(8), fg=Theme.FG_DIM, bg=Theme.BG).pack(anchor="w", pady=(16, 0))
+        tk.Label(main, text=f"Config: {get_config_dir()}", font=Theme.font(8), fg=Theme.FG_DIM, bg=Theme.BG, wraplength=360, justify="left").pack(anchor="w", pady=(4, 0))
         
         # Buttons
         btns = tk.Frame(main, bg=Theme.BG)
         btns.pack(fill=tk.X, pady=(20, 0))
+        
+        # Uninstall button (only show if installed)
+        if is_installed():
+            uninstall_btn = tk.Label(
+                btns,
+                text="Uninstall...",
+                font=Theme.font(10),
+                fg=Theme.RED,
+                bg=Theme.BG,
+                cursor="hand2"
+            )
+            uninstall_btn.pack(side=tk.LEFT)
+            uninstall_btn.bind("<Enter>", lambda e: uninstall_btn.config(fg=Theme.FG_BRIGHT))
+            uninstall_btn.bind("<Leave>", lambda e: uninstall_btn.config(fg=Theme.RED))
+            uninstall_btn.bind("<Button-1>", lambda e: self._uninstall())
+        
         Button(btns, "Save", self._save, primary=True).pack(side=tk.RIGHT, padx=(8, 0))
         Button(btns, "Cancel", self._cancel).pack(side=tk.RIGHT)
     
+    def _uninstall(self):
+        """Handle uninstall request."""
+        if messagebox.askyesno("Uninstall", "Remove all shortcuts?\n\nThe application file will remain - you can delete it manually."):
+            result = uninstall_application()
+            if result["success"]:
+                messagebox.showinfo("Uninstalled", "Shortcuts removed.\n\nYou can delete the application folder manually if desired:\n" + str(get_install_dir()))
+                self._cancel()
+            else:
+                messagebox.showerror("Error", f"Uninstall failed: {result['error']}")
+    
     def _save(self):
+        # Handle startup setting
+        if self.startup_var.get() != is_startup_enabled():
+            set_startup_enabled(self.startup_var.get())
+        
+        # Handle desktop shortcut
+        if self.desktop_var.get() and not has_desktop_shortcut():
+            create_desktop_shortcut()
+        elif not self.desktop_var.get() and has_desktop_shortcut():
+            remove_desktop_shortcut()
+        
+        # Handle start menu shortcut
+        if self.startmenu_var.get() and not has_start_menu_shortcut():
+            create_start_menu_shortcut()
+        elif not self.startmenu_var.get() and has_start_menu_shortcut():
+            remove_start_menu_shortcut()
+        
+        # Update config
         self.config["settings"]["show_on_startup"] = self.startup_var.get()
         self.result = self.config
         self.destroy()
 
 
-class WelcomeDialog(BaseDialog):
-    """Welcome dialog shown on first run."""
+class InstallDialog(BaseDialog):
+    """Install dialog shown on first run when not installed."""
     
     def __init__(self, parent):
-        super().__init__(parent, "Welcome", width=440, height=300)
+        super().__init__(parent, "Install Project Launcher", width=480, height=380)
+        self._create()
+        self._center()
+    
+    def _create(self):
+        main = tk.Frame(self.content, bg=Theme.BG, padx=24, pady=20)
+        main.pack(fill=tk.BOTH, expand=True)
+        
+        # Title
+        tk.Label(
+            main, 
+            text="Install Project Launcher?", 
+            font=Theme.font(14, bold=True), 
+            fg=Theme.FG_BRIGHT, 
+            bg=Theme.BG
+        ).pack(pady=(0, 12))
+        
+        # Description
+        install_dir = get_install_dir()
+        tk.Label(
+            main, 
+            text=f"This will copy the application to:\n{install_dir}",
+            font=Theme.font(10), 
+            fg=Theme.FG, 
+            bg=Theme.BG, 
+            justify="center"
+        ).pack(pady=(0, 20))
+        
+        # Options section
+        options_frame = tk.Frame(main, bg=Theme.BG)
+        options_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        tk.Label(options_frame, text="Options:", font=Theme.font(10, bold=True), fg=Theme.FG_BRIGHT, bg=Theme.BG).pack(anchor="w", pady=(0, 8))
+        
+        # Desktop shortcut (default: checked)
+        self.desktop_var = tk.BooleanVar(value=True)
+        row1 = tk.Frame(options_frame, bg=Theme.BG)
+        row1.pack(fill=tk.X, pady=2)
+        tk.Checkbutton(row1, variable=self.desktop_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
+        tk.Label(row1, text="Create Desktop shortcut", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
+        
+        # Start Menu shortcut (default: checked)
+        self.startmenu_var = tk.BooleanVar(value=True)
+        row2 = tk.Frame(options_frame, bg=Theme.BG)
+        row2.pack(fill=tk.X, pady=2)
+        tk.Checkbutton(row2, variable=self.startmenu_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
+        tk.Label(row2, text="Create Start Menu shortcut", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
+        
+        # Start with Windows (default: checked)
+        self.startup_var = tk.BooleanVar(value=True)
+        row3 = tk.Frame(options_frame, bg=Theme.BG)
+        row3.pack(fill=tk.X, pady=2)
+        tk.Checkbutton(row3, variable=self.startup_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
+        tk.Label(row3, text="Start with Windows", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
+        
+        # Buttons
+        btns = tk.Frame(main, bg=Theme.BG)
+        btns.pack(fill=tk.X, pady=(20, 0))
+        
+        Button(btns, "Install", self._install, primary=True).pack(side=tk.RIGHT, padx=(8, 0))
+        Button(btns, "Run Portable", self._portable).pack(side=tk.RIGHT, padx=(8, 0))
+        Button(btns, "Cancel", self._cancel).pack(side=tk.RIGHT)
+    
+    def _install(self):
+        """Perform installation."""
+        result = install_application(
+            create_desktop=self.desktop_var.get(),
+            create_start_menu=self.startmenu_var.get(),
+            create_startup=self.startup_var.get()
+        )
+        
+        if result["success"]:
+            self.result = {
+                "action": "installed",
+                "install_path": result["install_path"],
+                "startup_enabled": self.startup_var.get()
+            }
+            self.destroy()
+        else:
+            messagebox.showerror("Install Error", f"Installation failed:\n{result['error']}")
+    
+    def _portable(self):
+        """Run in portable mode without installing."""
+        self.result = {"action": "portable", "startup_enabled": self.startup_var.get()}
+        self.destroy()
+
+
+class WelcomeDialog(BaseDialog):
+    """Welcome dialog shown on first run (when already installed or running portable)."""
+    
+    def __init__(self, parent):
+        super().__init__(parent, "Welcome", width=440, height=280)
         self._create()
         self._center()
     
@@ -1402,23 +1571,14 @@ class WelcomeDialog(BaseDialog):
         ).pack(side=tk.LEFT)
         tk.Label(
             startup_row, 
-            text="Start automatically when Windows starts",
+            text="Start automatically with Windows",
             font=Theme.font(10), 
             fg=Theme.FG, 
             bg=Theme.BG
         ).pack(side=tk.LEFT)
         
-        # Tip about fast startup
-        tk.Label(
-            main, 
-            text="Tip: For faster startup, run setup_startup.bat as Admin",
-            font=Theme.font(8), 
-            fg=Theme.FG_DIM, 
-            bg=Theme.BG
-        ).pack(pady=(4, 24))
-        
         # Get Started button
-        Button(main, "Get Started", self._save, primary=True).pack()
+        Button(main, "Get Started", self._save, primary=True).pack(pady=(16, 0))
     
     def _save(self):
         self.result = {"enable_startup": self.startup_var.get()}
@@ -1597,20 +1757,54 @@ class App:
         self.root.destroy()
     
     def _show_welcome(self):
-        """Show welcome dialog on first run."""
-        dlg = WelcomeDialog(self.root)
-        self.root.wait_window(dlg)
-        
-        # Mark first run complete
-        set_first_run_complete()
-        
-        # Handle auto-start preference
-        if dlg.result and dlg.result.get("enable_startup"):
-            from startup_manager import set_startup_enabled
-            set_startup_enabled(True)
-            # Update config to reflect this
-            self.config["settings"]["show_on_startup"] = True
-            save_config(self.config)
+        """Show install/welcome dialog on first run."""
+        # If not installed and running from a temporary location (like Downloads),
+        # show install dialog
+        if not is_installed():
+            dlg = InstallDialog(self.root)
+            self.root.wait_window(dlg)
+            
+            if dlg.result:
+                action = dlg.result.get("action")
+                
+                if action == "installed":
+                    # Mark first run complete
+                    set_first_run_complete()
+                    
+                    # Update config
+                    self.config["settings"]["show_on_startup"] = dlg.result.get("startup_enabled", True)
+                    save_config(self.config)
+                    
+                    # Show success message with option to restart from installed location
+                    install_path = dlg.result.get("install_path", "")
+                    messagebox.showinfo(
+                        "Installed Successfully",
+                        f"Project Launcher has been installed!\n\n"
+                        f"Location: {install_path}\n\n"
+                        f"You can delete this downloaded file.\n"
+                        f"Use the Desktop or Start Menu shortcut to launch."
+                    )
+                    
+                elif action == "portable":
+                    # Running portable, just enable startup if requested
+                    set_first_run_complete()
+                    if dlg.result.get("startup_enabled"):
+                        set_startup_enabled(True)
+                        self.config["settings"]["show_on_startup"] = True
+                        save_config(self.config)
+        else:
+            # Already installed, show simple welcome dialog
+            dlg = WelcomeDialog(self.root)
+            self.root.wait_window(dlg)
+            
+            # Mark first run complete
+            set_first_run_complete()
+            
+            # Handle auto-start preference
+            if dlg.result and dlg.result.get("enable_startup"):
+                set_startup_enabled(True)
+                self.config["settings"]["show_on_startup"] = True
+                save_config(self.config)
     
     def _build_ui(self):
         # Main container with border
@@ -1846,8 +2040,6 @@ class App:
         if dlg.result:
             self.config = dlg.result
             save_config(self.config)
-            from startup_manager import set_startup_enabled
-            set_startup_enabled(self.config["settings"]["show_on_startup"])
     
     def _check_updates(self):
         """Check for updates in background."""
