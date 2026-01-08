@@ -11,7 +11,7 @@ import webbrowser
 from typing import Optional, Callable, Tuple
 
 # Current version - UPDATE THIS ON EACH RELEASE
-VERSION = "0.0.12"
+VERSION = "0.0.13"
 
 # GitHub repository info
 GITHUB_REPO = "ClarkeFL/project-launch"
