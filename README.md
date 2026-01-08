@@ -58,21 +58,24 @@ This warning appears because the app isn't signed with an expensive code signing
 </details>
 
 <details>
-<summary><strong>macOS - "App can't be opened because it is from an unidentified developer"</strong></summary>
+<summary><strong>macOS - "App is damaged and can't be opened" or "App can't be opened because it is from an unidentified developer"</strong></summary>
 
-**Option 1: Right-click method**
+This happens because the app is downloaded from the internet and isn't signed with an Apple Developer certificate. The app is **not actually damaged** - it's open-source and safe to run.
+
+**Fix: Remove the quarantine attribute (recommended)**
+```bash
+xattr -cr ~/Downloads/ProjectLauncher.app
+```
+Then double-click to open normally.
+
+**Alternative: Right-click method**
 1. Right-click (or Control-click) `ProjectLauncher.app`
 2. Select **"Open"** from the menu
 3. Click **"Open"** in the dialog
 
-**Option 2: System Preferences**
+**Alternative: System Preferences**
 1. Go to **System Preferences > Security & Privacy > General**
 2. Click **"Open Anyway"** next to the blocked app message
-
-**Option 3: Terminal**
-```bash
-xattr -cr ./ProjectLauncher.app
-```
 </details>
 
 <details>

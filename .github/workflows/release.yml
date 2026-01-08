@@ -137,8 +137,13 @@ jobs:
             
             **macOS:** 
             1. Download and unzip `ProjectLauncher-macOS-${{ steps.get_version.outputs.version }}.zip`
-            2. Double-click `ProjectLauncher.app` to run
-            3. If blocked by Gatekeeper, right-click and select "Open"
+            2. **Important:** Remove the quarantine attribute before opening:
+               ```bash
+               xattr -cr ~/Downloads/ProjectLauncher.app
+               ```
+            3. Double-click `ProjectLauncher.app` to run
+            
+            > If you see "App is damaged" or "unidentified developer" error, the `xattr -cr` command above will fix it.
             
             **Linux:** 
             ```bash

@@ -154,7 +154,18 @@ def build_macos():
     app_path = dist_dir / "ProjectLauncher.app"
     
     if app_path.exists():
-        # Zip the .app bundle to preserve executable permissions
+        # Re-sign the app with ad-hoc signature to ensure it's properly signed
+        print("[*] Signing app with ad-hoc signature...")
+        try:
+            subprocess.check_call([
+                "codesign", "--force", "--deep", "--sign", "-",
+                str(app_path)
+            ])
+            print("[OK] App signed successfully")
+        except Exception as e:
+            print(f"[WARNING] Could not sign app: {e}")
+        
+        # Zip the .app bundle to preserve executable permissions and signature
         zip_path = dist_dir / "ProjectLauncher.app.zip"
         print(f"[*] Creating {zip_path.name}...")
         shutil.make_archive(
