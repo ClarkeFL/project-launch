@@ -24,20 +24,22 @@ HAS_TRAY = None  # None = not checked yet, True/False = checked
 pystray = None
 Image = None
 ImageDraw = None
+ImageTk = None
 
 def _lazy_load_tray_modules():
     """Lazy load pystray and PIL modules. Returns True if available."""
-    global HAS_TRAY, pystray, Image, ImageDraw
+    global HAS_TRAY, pystray, Image, ImageDraw, ImageTk
     
     if HAS_TRAY is not None:
         return HAS_TRAY
     
     try:
         import pystray as _pystray
-        from PIL import Image as _Image, ImageDraw as _ImageDraw
+        from PIL import Image as _Image, ImageDraw as _ImageDraw, ImageTk as _ImageTk
         pystray = _pystray
         Image = _Image
         ImageDraw = _ImageDraw
+        ImageTk = _ImageTk
         HAS_TRAY = True
         log("pystray/PIL loaded (lazy)")
     except ImportError:
@@ -45,6 +47,35 @@ def _lazy_load_tray_modules():
         log("pystray/PIL not available")
     
     return HAS_TRAY
+
+
+def load_logo_image(size=24):
+    """Load the logo image for UI display. Returns PhotoImage or None."""
+    _lazy_load_tray_modules()
+    if not Image or not ImageTk:
+        return None
+    
+    from pathlib import Path
+    script_dir = Path(__file__).parent
+    
+    icon_paths = [
+        script_dir / "source_icon.png",
+        script_dir / "assets" / "icon.png",
+    ]
+    
+    for icon_path in icon_paths:
+        if icon_path.exists():
+            try:
+                image = Image.open(icon_path)
+                if image.mode != 'RGBA':
+                    image = image.convert('RGBA')
+                if image.size != (size, size):
+                    image = image.resize((size, size), Image.Resampling.LANCZOS)
+                return ImageTk.PhotoImage(image)
+            except Exception:
+                continue
+    
+    return None
 
 from config_manager import (
     load_config, save_config, add_project, remove_project, update_project,
@@ -1507,15 +1538,33 @@ class App:
         titlebar.bind("<Button-1>", self._start_drag)
         titlebar.bind("<B1-Motion>", self._do_drag)
         
+        # Logo + Title container
+        title_container = tk.Frame(titlebar, bg=Theme.BG_SECONDARY)
+        title_container.pack(side=tk.LEFT, padx=12)
+        title_container.bind("<Button-1>", self._start_drag)
+        title_container.bind("<B1-Motion>", self._do_drag)
+        
+        # Logo image
+        self._logo_image = load_logo_image(24)  # Keep reference to prevent garbage collection
+        if self._logo_image:
+            logo_lbl = tk.Label(
+                title_container,
+                image=self._logo_image,
+                bg=Theme.BG_SECONDARY
+            )
+            logo_lbl.pack(side=tk.LEFT, padx=(0, 8))
+            logo_lbl.bind("<Button-1>", self._start_drag)
+            logo_lbl.bind("<B1-Motion>", self._do_drag)
+        
         # Title
         title_lbl = tk.Label(
-            titlebar,
+            title_container,
             text="projects",
             font=Theme.font(12, bold=True),
             fg=Theme.FG_BRIGHT,
             bg=Theme.BG_SECONDARY
         )
-        title_lbl.pack(side=tk.LEFT, padx=16)
+        title_lbl.pack(side=tk.LEFT)
         title_lbl.bind("<Button-1>", self._start_drag)
         title_lbl.bind("<B1-Motion>", self._do_drag)
         
