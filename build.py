@@ -145,12 +145,12 @@ def build_macos():
         "--add-data", f"{root / 'assets'}:assets",
         "--hidden-import=pystray._darwin",
         "--hidden-import=PIL._tkinter_finder",
-        "--hidden-import=_struct",
         "--collect-all=pystray",
         "--collect-all=objc",
         "--collect-all=Foundation",
         "--collect-all=AppKit",
         "--collect-all=Quartz",
+        "--collect-binaries=_struct",
         str(root / "project_launcher.py")
     ])
     
