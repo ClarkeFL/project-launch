@@ -84,17 +84,6 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -laR artifacts/
 
-      - name: Prepare release files
-        run: |
-          mkdir -p release
-          # Move and rename files for release (handle versioned filenames)
-          find artifacts/ProjectLauncher-Setup-Windows -name "*.exe" -exec mv {} release/ProjectLauncher-Setup-Windows.exe \; 2>/dev/null || true
-          find artifacts/ProjectLauncher-Installer-macOS -name "*.dmg" -exec mv {} release/ProjectLauncher-Installer-macOS.dmg \; 2>/dev/null || true
-          find artifacts/project-launcher-installer-Linux -type f -exec mv {} release/project-launcher-installer-Linux \; 2>/dev/null || true
-          # Make Linux installer executable
-          chmod +x release/project-launcher-installer-Linux || true
-          ls -la release/
-
       - name: Get version from tag
         id: get_version
         run: |
@@ -103,6 +92,18 @@ jobs:
           else
             echo "version=dev-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
           fi
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          VERSION="${{ steps.get_version.outputs.version }}"
+          # Move and rename files for release with version in filename
+          find artifacts/ProjectLauncher-Setup-Windows -name "*.exe" -exec mv {} "release/ProjectLauncher-Setup-Windows-${VERSION}.exe" \; 2>/dev/null || true
+          find artifacts/ProjectLauncher-Installer-macOS -name "*.dmg" -exec mv {} "release/ProjectLauncher-Installer-macOS-${VERSION}.dmg" \; 2>/dev/null || true
+          find artifacts/project-launcher-installer-Linux -type f -exec mv {} "release/project-launcher-installer-Linux-${VERSION}" \; 2>/dev/null || true
+          # Make Linux installer executable
+          chmod +x release/project-launcher-installer-Linux-* || true
+          ls -la release/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -113,9 +114,9 @@ jobs:
           prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           generate_release_notes: true
           files: |
-            release/ProjectLauncher-Setup-Windows.exe
-            release/ProjectLauncher-Installer-macOS.dmg
-            release/project-launcher-installer-Linux
+            release/ProjectLauncher-Setup-Windows-${{ steps.get_version.outputs.version }}.exe
+            release/ProjectLauncher-Installer-macOS-${{ steps.get_version.outputs.version }}.dmg
+            release/project-launcher-installer-Linux-${{ steps.get_version.outputs.version }}
           body: |
             ## Project Launcher ${{ steps.get_version.outputs.version }}
             
@@ -123,9 +124,9 @@ jobs:
             
             | Platform | File | Instructions |
             |----------|------|--------------|
-            | **Windows** | `ProjectLauncher-Setup-Windows.exe` | Double-click to install |
-            | **macOS** | `ProjectLauncher-Installer-macOS.dmg` | Open DMG, run the installer inside |
-            | **Linux** | `project-launcher-installer-Linux` | Download, run `chmod +x` and execute |
+            | **Windows** | `ProjectLauncher-Setup-Windows-${{ steps.get_version.outputs.version }}.exe` | Double-click to install |
+            | **macOS** | `ProjectLauncher-Installer-macOS-${{ steps.get_version.outputs.version }}.dmg` | Open DMG, run the installer inside |
+            | **Linux** | `project-launcher-installer-Linux-${{ steps.get_version.outputs.version }}` | Download, run `chmod +x` and execute |
             
             ### What's Included
             
@@ -134,7 +135,7 @@ jobs:
             - AI coding tools integration (OpenCode, Claude Code, Aider)
             - Multi-browser support
             - System tray icon
-            - Auto-start on login (fast startup on Windows via Task Scheduler)
+            - Auto-start on login (configurable from Settings)
             
             ### Installation
             
@@ -147,6 +148,6 @@ jobs:
             
             **Linux:** 
             ```bash
-            chmod +x ./project-launcher-installer-Linux
-            ./project-launcher-installer-Linux
+            chmod +x ./project-launcher-installer-Linux-${{ steps.get_version.outputs.version }}
+            ./project-launcher-installer-Linux-${{ steps.get_version.outputs.version }}
             ```
