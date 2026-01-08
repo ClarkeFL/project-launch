@@ -229,7 +229,7 @@ class Button(tk.Frame):
 class ActionButton(tk.Frame):
     """Styled action button for project cards."""
     
-    def __init__(self, parent, text, command=None, fg=Theme.FG_DIM, hover_fg=Theme.ACCENT, **kwargs):
+    def __init__(self, parent, text, command=None, fg=Theme.FG_DIM, hover_fg=Theme.ACCENT, padx=12, pady=6, **kwargs):
         bg = kwargs.pop('bg', Theme.BG_CARD)
         super().__init__(parent, bg=bg, cursor="hand2")
         
@@ -245,8 +245,8 @@ class ActionButton(tk.Frame):
             font=Theme.font(11),
             fg=fg,
             bg=bg,
-            padx=12,
-            pady=6
+            padx=padx,
+            pady=pady
         )
         self.label.pack()
         
@@ -471,8 +471,8 @@ class ProjectCard(tk.Frame):
     def _build_ui(self):
         self.config(padx=16, pady=12)
         
-        # Left side - clickable to launch
-        left = tk.Frame(self, bg=Theme.BG_CARD, cursor="hand2")
+        # Left side - project info (no longer clickable)
+        left = tk.Frame(self, bg=Theme.BG_CARD)
         left.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         # Name
@@ -482,8 +482,7 @@ class ProjectCard(tk.Frame):
             font=Theme.font(11, bold=True),
             fg=Theme.FG_BRIGHT,
             bg=Theme.BG_CARD,
-            anchor="w",
-            cursor="hand2"
+            anchor="w"
         )
         self.name_lbl.pack(anchor="w")
         
@@ -498,8 +497,7 @@ class ProjectCard(tk.Frame):
             font=Theme.font(9),
             fg=Theme.FG_DIM,
             bg=Theme.BG_CARD,
-            anchor="w",
-            cursor="hand2"
+            anchor="w"
         )
         self.path_lbl.pack(anchor="w", pady=(2, 0))
         
@@ -527,8 +525,7 @@ class ProjectCard(tk.Frame):
                 text=" · ".join(parts),
                 font=Theme.font(9),
                 fg=Theme.FG_DIM,
-                bg=Theme.BG_CARD,
-                cursor="hand2"
+                bg=Theme.BG_CARD
             )
             self.tags_lbl.pack(anchor="w", pady=(4, 0))
         
@@ -536,7 +533,7 @@ class ProjectCard(tk.Frame):
         right = tk.Frame(self, bg=Theme.BG_CARD)
         right.pack(side=tk.RIGHT)
         
-        run_btn = ActionButton(right, "run", self._do_launch, fg=Theme.GREEN, hover_fg="#6ee7c2", bg=Theme.BG_CARD)
+        run_btn = ActionButton(right, "run", self._do_launch, fg=Theme.GREEN, hover_fg="#6ee7c2", bg=Theme.BG_CARD, padx=16, pady=8)
         run_btn.pack(side=tk.LEFT, padx=4)
         self.action_buttons.append(run_btn)
         
@@ -548,14 +545,12 @@ class ProjectCard(tk.Frame):
         delete_btn.pack(side=tk.LEFT, padx=(4, 0))
         self.action_buttons.append(delete_btn)
         
-        # Bindings - click anywhere on card (except buttons) to launch
+        # Hover effect on card (visual only, no click action)
         for w in [self, left, self.name_lbl, self.path_lbl]:
-            w.bind("<Button-1>", lambda e: self._do_launch())
             w.bind("<Enter>", self._on_enter)
             w.bind("<Leave>", self._on_leave)
         
         if hasattr(self, 'tags_lbl'):
-            self.tags_lbl.bind("<Button-1>", lambda e: self._do_launch())
             self.tags_lbl.bind("<Enter>", self._on_enter)
             self.tags_lbl.bind("<Leave>", self._on_leave)
     
@@ -1123,7 +1118,7 @@ class SettingsDialog(BaseDialog):
     """Settings dialog."""
     
     def __init__(self, parent, config):
-        super().__init__(parent, "settings", width=380, height=280)
+        super().__init__(parent, "settings", width=380, height=200)
         self.config = config.copy()
         
         self._create()
@@ -1140,26 +1135,6 @@ class SettingsDialog(BaseDialog):
         tk.Checkbutton(row1, variable=self.startup_var, bg=Theme.BG, activebackground=Theme.BG, selectcolor=Theme.BG_INPUT).pack(side=tk.LEFT)
         tk.Label(row1, text="launch on startup", font=Theme.font(10), fg=Theme.FG, bg=Theme.BG).pack(side=tk.LEFT)
         
-        # Terminal
-        tk.Label(main, text="terminal", font=Theme.font(10), fg=Theme.FG_DIM, bg=Theme.BG).pack(anchor="w", pady=(16, 4))
-        
-        terms = get_current_platform_terminals()
-        self.term_names = [t[1] for t in terms]
-        self.term_values = [t[0] for t in terms]
-        
-        curr = self.config.get("settings", {}).get("terminal", self.term_values[0])
-        idx = self.term_values.index(curr) if curr in self.term_values else 0
-        self.term_var = tk.StringVar(value=self.term_names[idx])
-        
-        combo_frame = tk.Frame(main, bg=Theme.BG_INPUT, highlightthickness=1, highlightbackground=Theme.BORDER)
-        combo_frame.pack(fill=tk.X)
-        
-        style = ttk.Style()
-        style.configure("Dark.TCombobox", fieldbackground=Theme.BG_INPUT, background=Theme.BG_INPUT)
-        
-        combo = ttk.Combobox(combo_frame, textvariable=self.term_var, values=self.term_names, state="readonly", font=Theme.font(10))
-        combo.pack(fill=tk.X, padx=1, pady=1)
-        
         # Config path
         tk.Label(main, text=f"config: {get_config_dir()}", font=Theme.font(8), fg=Theme.FG_DIM, bg=Theme.BG).pack(anchor="w", pady=(16, 0))
         
@@ -1170,9 +1145,7 @@ class SettingsDialog(BaseDialog):
         Button(btns, "Cancel", self._cancel).pack(side=tk.RIGHT)
     
     def _save(self):
-        idx = self.term_names.index(self.term_var.get())
         self.config["settings"]["show_on_startup"] = self.startup_var.get()
-        self.config["settings"]["terminal"] = self.term_values[idx]
         self.result = self.config
         self.destroy()
 
