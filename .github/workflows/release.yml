@@ -21,7 +21,7 @@ jobs:
             artifact_name: ProjectLauncher.exe
             asset_name: ProjectLauncher-Windows
           - os: macos-latest
-            artifact_name: ProjectLauncher
+            artifact_name: ProjectLauncher.app.zip
             asset_name: ProjectLauncher-macOS
           - os: ubuntu-latest
             artifact_name: project-launcher
@@ -90,10 +90,9 @@ jobs:
           VERSION="${{ steps.get_version.outputs.version }}"
           # Move and rename files for release with version in filename
           find artifacts/ProjectLauncher-Windows -name "*.exe" -exec mv {} "release/ProjectLauncher-Windows-${VERSION}.exe" \; 2>/dev/null || true
-          find artifacts/ProjectLauncher-macOS -type f -name "ProjectLauncher" -exec mv {} "release/ProjectLauncher-macOS-${VERSION}" \; 2>/dev/null || true
+          find artifacts/ProjectLauncher-macOS -name "*.zip" -exec mv {} "release/ProjectLauncher-macOS-${VERSION}.zip" \; 2>/dev/null || true
           find artifacts/project-launcher-Linux -type f -name "project-launcher" -exec mv {} "release/project-launcher-Linux-${VERSION}" \; 2>/dev/null || true
-          # Make executables... executable
-          chmod +x release/ProjectLauncher-macOS-* || true
+          # Make Linux executable... executable (macOS is zipped, no chmod needed)
           chmod +x release/project-launcher-Linux-* || true
           ls -la release/
 
@@ -107,7 +106,7 @@ jobs:
           generate_release_notes: true
           files: |
             release/ProjectLauncher-Windows-${{ steps.get_version.outputs.version }}.exe
-            release/ProjectLauncher-macOS-${{ steps.get_version.outputs.version }}
+            release/ProjectLauncher-macOS-${{ steps.get_version.outputs.version }}.zip
             release/project-launcher-Linux-${{ steps.get_version.outputs.version }}
           body: |
             ## Project Launcher ${{ steps.get_version.outputs.version }}
@@ -117,7 +116,7 @@ jobs:
             | Platform | File | Instructions |
             |----------|------|--------------|
             | **Windows** | `ProjectLauncher-Windows-${{ steps.get_version.outputs.version }}.exe` | Download and run - will offer to install |
-            | **macOS** | `ProjectLauncher-macOS-${{ steps.get_version.outputs.version }}` | Download, `chmod +x`, and run |
+            | **macOS** | `ProjectLauncher-macOS-${{ steps.get_version.outputs.version }}.zip` | Download, unzip, and double-click |
             | **Linux** | `project-launcher-Linux-${{ steps.get_version.outputs.version }}` | Download, `chmod +x`, and run |
             
             ### What's Included
@@ -137,11 +136,9 @@ jobs:
             3. Or choose "Run Portable" to run without installing
             
             **macOS:** 
-            ```bash
-            chmod +x ./ProjectLauncher-macOS-${{ steps.get_version.outputs.version }}
-            ./ProjectLauncher-macOS-${{ steps.get_version.outputs.version }}
-            ```
-            If blocked by Gatekeeper, right-click and select "Open"
+            1. Download and unzip `ProjectLauncher-macOS-${{ steps.get_version.outputs.version }}.zip`
+            2. Double-click `ProjectLauncher.app` to run
+            3. If blocked by Gatekeeper, right-click and select "Open"
             
             **Linux:** 
             ```bash

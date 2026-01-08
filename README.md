@@ -25,7 +25,7 @@ Download the latest release for your platform from the [Releases](https://github
 | Platform | File | Instructions |
 |----------|------|--------------|
 | **Windows** | `ProjectLauncher-Windows-vX.X.X.exe` | Download and run |
-| **macOS** | `ProjectLauncher-macOS-vX.X.X` | Download, `chmod +x`, and run |
+| **macOS** | `ProjectLauncher-macOS-vX.X.X.zip` | Download, unzip, and double-click |
 | **Linux** | `project-launcher-Linux-vX.X.X` | Download, `chmod +x`, and run |
 
 ### First Run
@@ -61,7 +61,7 @@ This warning appears because the app isn't signed with an expensive code signing
 <summary><strong>macOS - "App can't be opened because it is from an unidentified developer"</strong></summary>
 
 **Option 1: Right-click method**
-1. Right-click (or Control-click) the app
+1. Right-click (or Control-click) `ProjectLauncher.app`
 2. Select **"Open"** from the menu
 3. Click **"Open"** in the dialog
 
@@ -71,7 +71,7 @@ This warning appears because the app isn't signed with an expensive code signing
 
 **Option 3: Terminal**
 ```bash
-xattr -cr ./ProjectLauncher-macOS-*
+xattr -cr ./ProjectLauncher.app
 ```
 </details>
 

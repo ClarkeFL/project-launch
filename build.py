@@ -125,11 +125,10 @@ def build_macos():
         print("[*] Icon not found, generating...")
         subprocess.check_call([sys.executable, str(root / "create_icons.py")])
     
-    # PyInstaller command for macOS
+    # PyInstaller command for macOS - creates .app bundle
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name=ProjectLauncher",
-        "--onefile",
         "--windowed",
         "--noupx",
     ]
@@ -153,14 +152,20 @@ def build_macos():
     
     dist_dir = root / "dist"
     app_path = dist_dir / "ProjectLauncher.app"
-    exe_path = dist_dir / "ProjectLauncher"
     
     if app_path.exists():
-        print(f"\n[OK] macOS build complete: {app_path}")
-        return app_path
-    elif exe_path.exists():
-        print(f"\n[OK] macOS build complete: {exe_path}")
-        return exe_path
+        # Zip the .app bundle to preserve executable permissions
+        zip_path = dist_dir / "ProjectLauncher.app.zip"
+        print(f"[*] Creating {zip_path.name}...")
+        shutil.make_archive(
+            str(dist_dir / "ProjectLauncher.app"),
+            'zip',
+            dist_dir,
+            "ProjectLauncher.app"
+        )
+        print(f"\n[OK] macOS build complete: {zip_path}")
+        print(f"    Size: {zip_path.stat().st_size / 1024 / 1024:.1f} MB")
+        return zip_path
     else:
         print("[ERROR] Build failed - application not found")
         return None
@@ -213,41 +218,6 @@ def build_linux():
         return None
 
 
-def create_dmg(app_path):
-    """Create DMG file for macOS (only works on macOS)."""
-    if platform.system() != "Darwin":
-        print("[SKIP] DMG creation only available on macOS")
-        return None
-    
-    print("\n[*] Creating DMG...")
-    
-    root = get_project_root()
-    dist_dir = root / "dist"
-    dmg_path = dist_dir / "ProjectLauncher.dmg"
-    
-    # Remove existing DMG
-    if dmg_path.exists():
-        dmg_path.unlink()
-    
-    try:
-        # Create DMG using hdiutil
-        cmd = [
-            "hdiutil", "create",
-            "-volname", "Project Launcher",
-            "-srcfolder", str(app_path),
-            "-ov",
-            "-format", "UDZO",
-            str(dmg_path)
-        ]
-        subprocess.check_call(cmd)
-        
-        print(f"[OK] DMG created: {dmg_path}")
-        return dmg_path
-    except Exception as e:
-        print(f"[WARNING] Could not create DMG: {e}")
-        return None
-
-
 def create_appimage(exe_path):
     """Create AppImage for Linux (only works on Linux)."""
     if platform.system() != "Linux":
@@ -270,10 +240,7 @@ def build_current_platform():
     if plat == "windows":
         return build_windows()
     elif plat == "macos":
-        app = build_macos()
-        if app:
-            create_dmg(app)
-        return app
+        return build_macos()
     else:
         exe = build_linux()
         if exe:
