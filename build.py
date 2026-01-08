@@ -145,6 +145,8 @@ def build_macos():
         "--add-data", f"{root / 'assets'}:assets",
         "--hidden-import=pystray._darwin",
         "--hidden-import=PIL._tkinter_finder",
+        "--hidden-import=_struct",
+        "--collect-submodules=pystray",
         str(root / "project_launcher.py")
     ])
     
