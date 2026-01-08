@@ -112,7 +112,12 @@ def build_windows():
 
 
 def build_macos():
-    """Build macOS application."""
+    """Build macOS application.
+    
+    Strategy: Build a --onefile binary (which works reliably) and then
+    wrap it in a proper .app bundle structure manually. This avoids
+    PyInstaller's --windowed mode issues with standard library modules.
+    """
     print("\n" + "=" * 60)
     print("Building for macOS...")
     print("=" * 60)
@@ -125,19 +130,14 @@ def build_macos():
         print("[*] Icon not found, generating...")
         subprocess.check_call([sys.executable, str(root / "create_icons.py")])
     
-    # PyInstaller command for macOS - creates .app bundle
+    # Step 1: Build a --onefile binary (this works reliably)
+    print("[*] Building standalone binary...")
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name=ProjectLauncher",
-        "--windowed",
+        "--onefile",  # Creates a single reliable binary
+        "--windowed",  # Still suppress console
         "--noupx",
-    ]
-    
-    # Add icon if it exists
-    if icon_path.exists():
-        cmd.append(f"--icon={icon_path}")
-    
-    cmd.extend([
         "--add-data", f"{root / 'config_manager.py'}:.",
         "--add-data", f"{root / 'launchers.py'}:.",
         "--add-data", f"{root / 'startup_manager.py'}:.",
@@ -150,42 +150,100 @@ def build_macos():
         "--collect-all=Foundation",
         "--collect-all=AppKit",
         "--collect-all=Quartz",
-        "--collect-binaries=_struct",
         str(root / "project_launcher.py")
-    ])
+    ]
     
     subprocess.check_call(cmd, cwd=root)
     
     dist_dir = root / "dist"
-    app_path = dist_dir / "ProjectLauncher.app"
+    binary_path = dist_dir / "ProjectLauncher"
     
-    if app_path.exists():
-        # Re-sign the app with ad-hoc signature to ensure it's properly signed
-        print("[*] Signing app with ad-hoc signature...")
-        try:
-            subprocess.check_call([
-                "codesign", "--force", "--deep", "--sign", "-",
-                str(app_path)
-            ])
-            print("[OK] App signed successfully")
-        except Exception as e:
-            print(f"[WARNING] Could not sign app: {e}")
-        
-        # Zip the .app bundle to preserve executable permissions and signature
-        zip_path = dist_dir / "ProjectLauncher.app.zip"
-        print(f"[*] Creating {zip_path.name}...")
-        shutil.make_archive(
-            str(dist_dir / "ProjectLauncher.app"),
-            'zip',
-            dist_dir,
-            "ProjectLauncher.app"
-        )
-        print(f"\n[OK] macOS build complete: {zip_path}")
-        print(f"    Size: {zip_path.stat().st_size / 1024 / 1024:.1f} MB")
-        return zip_path
-    else:
-        print("[ERROR] Build failed - application not found")
+    if not binary_path.exists():
+        print("[ERROR] Build failed - binary not found")
         return None
+    
+    # Step 2: Create .app bundle structure manually
+    print("[*] Creating .app bundle...")
+    app_path = dist_dir / "ProjectLauncher.app"
+    contents_path = app_path / "Contents"
+    macos_path = contents_path / "MacOS"
+    resources_path = contents_path / "Resources"
+    
+    # Clean up any existing .app
+    if app_path.exists():
+        shutil.rmtree(app_path)
+    
+    # Create directory structure
+    macos_path.mkdir(parents=True)
+    resources_path.mkdir(parents=True)
+    
+    # Move binary into .app bundle
+    shutil.move(str(binary_path), str(macos_path / "ProjectLauncher"))
+    
+    # Copy icon if it exists
+    if icon_path.exists():
+        shutil.copy(str(icon_path), str(resources_path / "icon.icns"))
+    
+    # Create Info.plist
+    info_plist = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>English</string>
+    <key>CFBundleExecutable</key>
+    <string>ProjectLauncher</string>
+    <key>CFBundleIconFile</key>
+    <string>icon.icns</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.projectlauncher.app</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Project Launcher</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.13</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+</dict>
+</plist>
+"""
+    (contents_path / "Info.plist").write_text(info_plist)
+    
+    # Step 3: Sign the app
+    print("[*] Signing app with ad-hoc signature...")
+    try:
+        subprocess.check_call([
+            "codesign", "--force", "--deep", "--sign", "-",
+            str(app_path)
+        ])
+        print("[OK] App signed successfully")
+    except Exception as e:
+        print(f"[WARNING] Could not sign app: {e}")
+    
+    # Step 4: Create zip to preserve permissions
+    zip_path = dist_dir / "ProjectLauncher.app.zip"
+    print(f"[*] Creating {zip_path.name}...")
+    shutil.make_archive(
+        str(dist_dir / "ProjectLauncher.app"),
+        'zip',
+        dist_dir,
+        "ProjectLauncher.app"
+    )
+    
+    print(f"\n[OK] macOS build complete: {zip_path}")
+    print(f"    Size: {zip_path.stat().st_size / 1024 / 1024:.1f} MB")
+    return zip_path
 
 
 def build_linux():
